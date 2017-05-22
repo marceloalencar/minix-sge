@@ -17,6 +17,12 @@
 
 static int sge_instance;
 
+static void sge_init(message *mp);
+static void sge_interrupt(message *mp);
+static void sge_writev_s(message *mp, int from_int);
+static void sge_readv_s(message *mp, int from_int);
+static void sge_getstat_s(message *mp);
+
 /* SEF functions and variables. */
 static void sef_local_startup(void);
 static int sef_cb_init_fresh(int type, sef_init_info_t *info);
@@ -57,10 +63,10 @@ int main(int argc, char *argv[])
 		}
 		switch (m.m_type)
 		{
-		case DL_CONF:		sge_conf(&m);				break;
-		case DL_GETSTAT_S:	sge_getstat(&m);			break;
-		case DL_WRITEV_S:	sge_writev(&m, FALSE);		break;
-		case DL_READV_S:	sge_readv(&m, FALSE);		break;
+		case DL_CONF:		sge_init(&m);				break;
+		case DL_GETSTAT_S:	sge_getstat_s(&m);			break;
+		case DL_WRITEV_S:	sge_writev_s(&m, FALSE);	break;
+		case DL_READV_S:	sge_readv_s(&m, FALSE);		break;
 	    default:
 			panic("illegal message: %d", m.m_type);
 		}
@@ -101,15 +107,75 @@ static int sef_cb_init_fresh(int UNUSED(type), sef_init_info_t *UNUSED(info))
 	(void)env_parse("instance", "d", 0, &v, 0, 255);
 	sge_instance = (int) v;
 	
-	switch(type)
-	{
-	case SEF_INIT_FRESH:
-		printf("%s", STARTUP_MESSAGE);
-		break;
-	}
-	
 	/* Announce we are up! */
     netdriver_announce();
 
     return(OK);
+}
+
+/*===========================================================================*
+ *                        sef_cb_signal_handler                              *
+ *===========================================================================*/
+static void sef_cb_signal_handler(int signo)
+{
+	
+}
+
+/*===========================================================================*
+ *                               sge_init                                    *
+ *===========================================================================*/
+static void sge_init(message *mp)
+{
+	
+}
+
+/*===========================================================================*
+ *                             sge_writev_s                                  *
+ *===========================================================================*/
+static void sge_writev_s(mp, from_int)
+message *mp;
+int from_int;
+{
+	
+}
+
+/*===========================================================================*
+ *                              sge_readv_s                                  *
+ *===========================================================================*/
+static void sge_readv_s(mp, from_int)
+message *mp;
+int from_int;
+{
+	
+}
+
+/*===========================================================================*
+ *                             sge_getstat_s                                 *
+ *===========================================================================*/
+static void sge_getstat_s(mp)
+message *mp;
+{
+	
+}
+
+/*===========================================================================*
+ *                             sge_interrupt                                 *
+ *===========================================================================*/
+static void sge_interrupt(mp)
+message *mp;
+{
+	
+}
+
+/*===========================================================================*
+ *                              mess_reply                                   *
+ *===========================================================================*/
+static void mess_reply(req, reply_mess)
+message *req;
+message *reply_mess;
+{
+	if (ipc_send(req->m_source, reply_mess) != OK)
+	{
+		panic("unable to send reply message");
+	}
 }
