@@ -15,6 +15,11 @@
 #include <stdlib.h>
 #include "sge.h"
 
+/* SEF functions and variables. */
+static void sef_local_startup(void);
+static int sef_cb_init_fresh(int type, sef_init_info_t *info);
+static void sef_cb_signal_handler(int signo);
+
 /*===========================================================================*
  *                                    main                                   *
  *===========================================================================*/
