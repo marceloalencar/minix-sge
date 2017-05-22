@@ -2,26 +2,34 @@
  *
  * SiS 190/191 Fast Ethernet Controller driver
  * 
- * Parts of this code are based on the FreeBSD implementation.
- * (https://svnweb.freebsd.org/base/head/sys/dev/sge/)
+ * Parts of this code are based on the FreeBSD implementation
+ * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), and
+ * e1000 driver from Niek Linnenbank.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
  */
  
 #include <minix/drivers.h>
 #include <minix/netdriver.h>
-
 #include <stdio.h>
 #include <stdlib.h>
+#include <machine/pci.h>
 #include "sge.h"
 
 static int sge_instance;
+static sge_t sge_state;
 
 static void sge_init(message *mp);
+static void sge_init_pci(void);
+static int sge_probe(sge_t *e, int skip);
+static int sge_init_hw(sge_t *e);
+static void sge_reset_hw(sge_t *e);
 static void sge_interrupt(message *mp);
+static void sge_stop(sge_t *e);
 static void sge_writev_s(message *mp, int from_int);
 static void sge_readv_s(message *mp, int from_int);
 static void sge_getstat_s(message *mp);
+static void mess_reply(message *req, message *reply);
 
 /* SEF functions and variables. */
 static void sef_local_startup(void);
@@ -107,6 +115,9 @@ static int sef_cb_init_fresh(int UNUSED(type), sef_init_info_t *UNUSED(info))
 	(void)env_parse("instance", "d", 0, &v, 0, 255);
 	sge_instance = (int) v;
 	
+	/* Clear state. */
+	memset(&sge_state, 0, sizeof(sge_state));
+	
 	/* Announce we are up! */
     netdriver_announce();
 
@@ -118,7 +129,13 @@ static int sef_cb_init_fresh(int UNUSED(type), sef_init_info_t *UNUSED(info))
  *===========================================================================*/
 static void sef_cb_signal_handler(int signo)
 {
+	sge_t *e;
+	e = &sge_state;
 	
+	/* Only check for termination signal, ignore anything else. */
+    if (signo != SIGTERM) return;
+    
+    sge_stop(e);
 }
 
 /*===========================================================================*
@@ -126,7 +143,170 @@ static void sef_cb_signal_handler(int signo)
  *===========================================================================*/
 static void sge_init(message *mp)
 {
+	static int first_time = 1;
+    message reply_mess;
+    sge_t *e;
+    
+    /* Configure PCI devices, if needed. */
+    if (first_time)
+    {
+		first_time = 0;
+		sge_init_pci();
+    }
+    e = &sge_state;
+    
+    /* Initialize hardware, if needed. */
+    if (!(e->status & SGE_ENABLED) && !(sge_init_hw(e)))
+    {
+        reply_mess.m_type  = DL_CONF_REPLY;
+        reply_mess.m_netdrv_net_dl_conf.stat = ENXIO;
+        mess_reply(mp, &reply_mess);
+        return;
+    }
+    /* Reply back to INET. */
+    reply_mess.m_type  = DL_CONF_REPLY;
+    reply_mess.m_netdrv_net_dl_conf.stat = OK;
+    memcpy(reply_mess.m_netdrv_net_dl_conf.hw_addr, e->address.ea_addr,
+	    sizeof(reply_mess.m_netdrv_net_dl_conf.hw_addr));
+    mess_reply(mp, &reply_mess);
+}
+
+/*===========================================================================*
+ *                             sge_init_pci                                  *
+ *===========================================================================*/
+static void sge_init_pci()
+{
+	sge_t *e;
 	
+	/* Initialize the PCI bus. */
+    pci_init();
+    
+    /* Try to detect sge's. */
+    e = &sge_state;
+    strlcpy(e->name, "sge#0", sizeof(e->name));
+    e->name[4] += sge_instance;
+    sge_probe(e, sge_instance);
+}
+
+/*===========================================================================*
+ *                               sge_probe                                   *
+ *===========================================================================*/
+static int sge_probe(sge_t *e, int skip)
+{
+	int r, devind, ioflag;
+    u16_t vid, did, cr;
+    u32_t status[2];
+    u32_t base, size;
+    u32_t gfpreg, sector_base_addr;
+    char *dname;
+    
+    /*
+     * Attempt to iterate the PCI bus. Start at the beginning.
+     */
+    if ((r = pci_first_dev(&devind, &vid, &did)) == 0)
+    {
+		return FALSE;
+    }
+    /* Loop devices on the PCI bus. */
+    while (skip--)
+    {
+		if (!(r = pci_next_dev(&devind, &vid, &did)))
+		{
+		    return FALSE;
+		}
+    }
+    
+    /*
+     * Successfully detected an SiS Ethernet Controller on the PCI bus.
+     */
+    e->status = SGE_DETECTED;
+    
+    /*
+     * Set card specific properties.
+     */
+    switch (did)
+    {
+    case SGE_DEV_0190:
+    case SGE_DEV_0191:
+    	//Specific initialization
+	    break;
+
+	default:
+	    //General initialization
+	    break;
+    }
+    
+    /* Inform the user about the new card. */
+    if (!(dname = pci_dev_name(vid, did)))
+    {
+        dname = "SiS 190/191 Ethernet Controller";
+    }
+    
+    /* Reserve PCI resources found. */
+    if ((r = pci_reserve_ok(devind)) != OK)
+    {
+        panic("failed to reserve PCI device: %d", r);
+    }
+    /* Read PCI configuration. */
+    e->irq   = pci_attr_r8(devind, PCI_ILR);
+
+    if ((r = pci_get_bar(devind, PCI_BAR, &base, &size, &ioflag)) != OK)
+		panic("failed to get PCI BAR (%d)", r);
+    if (ioflag) panic("PCI BAR is not for memory");
+
+    e->regs  = vm_map_phys(SELF, (void *) base, size);
+    if (e->regs == (u8_t *) -1) {
+		panic("failed to map hardware registers from PCI");
+    }
+    
+    cr = pci_attr_r16(devind, PCI_CR);
+    if (!(cr & PCI_CR_MAST_EN))
+		pci_attr_w16(devind, PCI_CR, cr | PCI_CR_MAST_EN);
+    
+	return TRUE;
+}
+
+/*===========================================================================*
+ *                              sge_init_hw                                  *
+ *===========================================================================*/
+static int sge_init_hw(e)
+sge_t *e;
+{
+	int r, i;
+	
+	e->status = SGE_ENABLED;
+	e->irq_hook = e->irq;
+	
+	/*
+     * Set the interrupt handler and policy. Do not automatically
+     * re-enable interrupts. Return the IRQ line number on interrupts.
+     */
+    if ((r = sys_irqsetpolicy(e->irq, 0, &e->irq_hook)) != OK)
+    {
+		panic("sys_irqsetpolicy failed: %d", r);
+    }
+    if ((r = sys_irqenable(&e->irq_hook)) != OK)
+    {
+	panic("sys_irqenable failed: %d", r);
+    }
+    /* Reset hardware. */
+    sge_reset_hw(e);
+    
+//    /* Initialization routine */
+    printf("%s: MEM at %p, IRQ %d\n", e->name, e->regs, e->irq);
+    
+    return TRUE;
+}
+
+/*===========================================================================*
+ *                             sge_reset_hw                                  *
+ *===========================================================================*/
+static void sge_reset_hw(e)
+sge_t *e;
+{
+//	/* Reset routine goes here */
+	
+	tickdelay(1);
 }
 
 /*===========================================================================*
@@ -165,6 +345,19 @@ static void sge_interrupt(mp)
 message *mp;
 {
 	
+}
+
+/*===========================================================================*
+ *                                sge_stop                                   *
+ *===========================================================================*/
+static void sge_stop(e)
+sge_t *e;
+{
+	printf("%s: MEM at %p, IRQ %d\n", e->name, e->regs, e->irq);
+	
+	sge_reset_hw(e);
+	
+	exit(EXIT_SUCCESS);
 }
 
 /*===========================================================================*
