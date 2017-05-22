@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include "sge.h"
 
+static int sge_instance;
+
 /* SEF functions and variables. */
 static void sef_local_startup(void);
 static int sef_cb_init_fresh(int type, sef_init_info_t *info);
@@ -34,35 +36,35 @@ int main(int argc, char *argv[])
 	env_setargs(argc, argv);
 	sef_local_startup();
 	
-//	while (TRUE)
-//	{
-//		if ((r= netdriver_receive(ANY, &m, &ipc_status)) != OK)
-//		{
-//			panic("netdriver_receive failed: %d", r);
-//		}
-//		
-//		if (is_ipc_notify(ipc_status))
-//		{
-//			switch (_ENDPOINT_P(m.m_source))
-//			{
-//			case HARDWARE:
-//				sge_interrupt(&m);
-//				break;
-//			case CLOCK:
-//				break;
-//			}
-//			continue;
-//		}
-//		switch (m.m_type)
-//		{
-//		case DL_CONF:		sge_conf(&m);				break;
-//		case DL_GETSTAT_S:	sge_getstat(&m);			break;
-//		case DL_WRITEV_S:	sge_writev(&m, FALSE);		break;
-//		case DL_READV_S:	sge_readv(&m, FALSE);		break;
-//	    default:
-//			panic("illegal message: %d", m.m_type);
-//		}
-//	}
+	while (TRUE)
+	{
+		if ((r= netdriver_receive(ANY, &m, &ipc_status)) != OK)
+		{
+			panic("netdriver_receive failed: %d", r);
+		}
+		
+		if (is_ipc_notify(ipc_status))
+		{
+			switch (_ENDPOINT_P(m.m_source))
+			{
+			case HARDWARE:
+				sge_interrupt(&m);
+				break;
+			case CLOCK:
+				break;
+			}
+			continue;
+		}
+		switch (m.m_type)
+		{
+		case DL_CONF:		sge_conf(&m);				break;
+		case DL_GETSTAT_S:	sge_getstat(&m);			break;
+		case DL_WRITEV_S:	sge_writev(&m, FALSE);		break;
+		case DL_READV_S:	sge_readv(&m, FALSE);		break;
+	    default:
+			panic("illegal message: %d", m.m_type);
+		}
+	}
 }
 
 /*===========================================================================*
@@ -92,6 +94,12 @@ static void sef_local_startup()
 static int sef_cb_init_fresh(int UNUSED(type), sef_init_info_t *UNUSED(info))
 {
 	/* Initialize the SiS FE Driver. */
+	long v;
+	int r;
+	
+	v = 0;
+	(void)env_parse("instance", "d", 0, &v, 0, 255);
+	sge_instance = (int) v;
 	
 	switch(type)
 	{

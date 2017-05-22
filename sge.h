@@ -11,6 +11,6 @@
 #ifndef _SGE_H_
 #define _SGE_H_
 
-#define STARTUP_MESSAGE "O driver foi inicializado.\n"
+
 
 #endif /* !_SGE_H_ */
