@@ -27,41 +27,41 @@
 #define SGE_TRANSMIT	(1 << 5)
 
 /* Registers */
-#define	SGE_REG_TX_CTL			0x00
-#define	SGE_REG_TX_DESC			0x04
-#define	SGE_REG_RESERVED0		0x08
-#define	SGE_REG_TX_NEXT			0x0c
+#define	SGE_REG_TX_CTL			0x00 /* Tx Host Control/status Register */
+#define	SGE_REG_TX_DESC			0x04 /* Tx Home Descriptor Base Register */
+#define	SGE_REG_RESERVED0		0x08 /* Reserved */
+#define	SGE_REG_TX_NEXT			0x0c /* Tx Next Descriptor Control/Status Register */
 
-#define	SGE_REG_RX_CTL			0x10
-#define	SGE_REG_RX_DESC			0x14
-#define	SGE_REG_RESERVED1		0x18
-#define	SGE_REG_RX_NEXT			0x1c
+#define	SGE_REG_RX_CTL			0x10 /* Rx Host Control/status Register */
+#define	SGE_REG_RX_DESC			0x14 /* Rx Home Descriptor Base Register */
+#define	SGE_REG_RESERVED1		0x18 /* Reserved */
+#define	SGE_REG_RX_NEXT			0x1c /* Rx Next Descriptor Control/Status Register */
 
-#define	SGE_REG_INTRSTATUS		0x20
-#define	SGE_REG_INTRMASK		0x24
-#define	SGE_REG_INTRCONTROL		0x28
-#define	SGE_REG_INTRTIMER		0x2c
+#define	SGE_REG_INTRSTATUS		0x20 /* Interrupt Source Register */
+#define	SGE_REG_INTRMASK		0x24 /* Interrupt Mask Register */
+#define	SGE_REG_INTRCONTROL		0x28 /* Interrupt Control Register */
+#define	SGE_REG_INTRTIMER		0x2c /* Interupt Timer Register */
 
-#define	SGE_REG_PMCONTROL		0x30
-#define	SGE_REG_RESERVED2		0x34
-#define	SGE_REG_ROMCONTROL		0x38
-#define	SGE_REG_ROMINTERFACE		0x3c
-#define	SGE_REG_STATIONCONTROL		0x40
-#define	SGE_REG_GMIICONTROL		0x44
-#define	SGE_REG_GMACIOCR		0x48
-#define	SGE_REG_GMACIOCTL		0x4c
-#define	SGE_REG_TXMACCONTROL		0x50
-#define	SGE_REG_TXMACTIMELIMIT		0x54
-#define	SGE_REG_RGMIIDELAY		0x58
-#define	SGE_REG_RESERVED3		0x5c
-#define	SGE_REG_RXMACCONTROL		0x60	/* 1  WORD */
-#define	SGE_REG_RXMACADDR		0x62	/* 6x BYTE */
-#define	SGE_REG_RXHASHTABLE		0x68	/* 1 LONG */
-#define	SGE_REG_RXHASHTABLE2		0x6c	/* 1 LONG */
-#define	SGE_REG_RXWAKEONLAN		0x70
-#define	SGE_REG_RXWAKEONLANDATA		0x74
-#define	SGE_REG_RXMPSCONTROL		0x78
-#define	SGE_REG_RESERVED4		0x7c
+#define	SGE_REG_PMCONTROL		0x30 /* Power Management Control/Status Register */
+#define	SGE_REG_RESERVED2		0x34 /* Reserved */
+#define	SGE_REG_ROMCONTROL		0x38 /* EEPROM Control/Status Register */
+#define	SGE_REG_ROMINTERFACE		0x3c /* EEPROM Interface Register */
+#define	SGE_REG_STATIONCONTROL		0x40 /* Station Control/Status Register */
+#define	SGE_REG_GMIICONTROL		0x44 /* Station Management Interface Register */
+#define	SGE_REG_GMACIOCR		0x48 /* GMAC IO Compensation Register */
+#define	SGE_REG_GMACIOCTL		0x4c /* GMAC IO Control Register */
+#define	SGE_REG_TXMACCONTROL		0x50 /* Tx MAC Control Register */
+#define	SGE_REG_TXMACTIMELIMIT		0x54 /* Tx MAC Timer/TryLimit Register */
+#define	SGE_REG_RGMIIDELAY		0x58 /* RGMII Tx Internal Delay Control Register */
+#define	SGE_REG_RESERVED3		0x5c /* Reserved */
+#define	SGE_REG_RXMACCONTROL		0x60 /* Rx MAC Control Register */
+#define	SGE_REG_RXMACADDR		0x62 /* Rx MAC Unicast Address Register */
+#define	SGE_REG_RXHASHTABLE		0x68 /* Rx MAC Multicast Hash Table Register 1 */
+#define	SGE_REG_RXHASHTABLE2		0x6c /* Rx MAC Multicast Hash Table Register 2 */
+#define	SGE_REG_RXWAKEONLAN		0x70 /* Rx WOL Control Register */
+#define	SGE_REG_RXWAKEONLANDATA		0x74 /* Rx WOL Data Access Register */
+#define	SGE_REG_RXMPSCONTROL		0x78 /* Rx MPS Control Register */
+#define	SGE_REG_RESERVED4		0x7c /* Reserved */
 
 typedef struct sge
 {
