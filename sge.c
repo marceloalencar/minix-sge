@@ -302,11 +302,13 @@ sge_t *e;
 	 */
 	if ((r = sys_irqsetpolicy(e->irq, 0, &e->irq_hook)) != OK)
 	{
-		panic("sys_irqsetpolicy failed: %d", r);
+		printf("sys_irqsetpolicy failed: %d", r);
+		return -EFAULT;
 	}
 	if ((r = sys_irqenable(&e->irq_hook)) != OK)
 	{
-		panic("sys_irqenable failed: %d", r);
+		printf("sys_irqenable failed: %d", r);
+		return -EFAULT;
 	}
 	/* Reset hardware. */
 	sge_reset_hw(e);
