@@ -3,7 +3,8 @@
  * SiS 190/191 Fast Ethernet Controller driver
  * 
  * Parts of this code are based on the FreeBSD implementation.
- * (https://svnweb.freebsd.org/base/head/sys/dev/sge/)
+ * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), and
+ * e1000 driver from Niek Linnenbank.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
  */
@@ -13,6 +14,9 @@
 
 #include <net/gen/ether.h> 
 #include <net/gen/eth_io.h> 
+
+/* MAC Override */
+#define SGE_ENVVAR		"SGEETH"
 
 /* Device IDs */
 #define SGE_DEV_0190	0x0190 /* SiS 190 PCI Fast Ethernet Adapter */
@@ -44,8 +48,8 @@
 
 #define	SGE_REG_PMCONTROL		0x30 /* Power Management Control/Status Register */
 #define	SGE_REG_RESERVED2		0x34 /* Reserved */
-#define	SGE_REG_ROMCONTROL		0x38 /* EEPROM Control/Status Register */
-#define	SGE_REG_ROMINTERFACE		0x3c /* EEPROM Interface Register */
+#define	SGE_REG_EEPROMCONTROL		0x38 /* EEPROM Control/Status Register */
+#define	SGE_REG_EEPROMINTERFACE		0x3c /* EEPROM Interface Register */
 #define	SGE_REG_STATIONCONTROL		0x40 /* Station Control/Status Register */
 #define	SGE_REG_GMIICONTROL		0x44 /* Station Management Interface Register */
 #define	SGE_REG_GMACIOCR		0x48 /* GMAC IO Compensation Register */
@@ -63,6 +67,26 @@
 #define	SGE_REG_RXMPSCONTROL		0x78 /* Rx MPS Control Register */
 #define	SGE_REG_RESERVED4		0x7c /* Reserved */
 
+/* EEPROM Addresses */
+#define	SGE_EEPADDR_SIG		0x00 /* EEPROM Signature */
+#define	SGE_EEPADDR_CLK		0x01 /* EEPROM Clock */
+#define	SGE_EEPADDR_INFO		0x02 /* EEPROM Info */
+#define	SGE_EEPADDR_MAC		0x03 /* EEPROM MAC Address */
+
+/* EEPROM Interface */
+#define SGE_EEPROM_DATA		0xffff0000
+#define SGE_EEPROM_DATA_SHIFT		16
+#define SGE_EEPROM_OFFSET_SHIFT		10
+#define	SGE_EEPROM_OPER			0x00000300
+#define SGE_EEPROM_OPER_SHIFT		8
+#define SGE_EEPROM_OPER_READ		(2 << SGE_EEPROM_SHIFT)
+#define SGE_EEPROM_OPER_WRITE		(1 << SGE_EEPROM_SHIFT)
+#define SGE_EEPROM_REQ		0x00000080
+#define SGE_EEPROM_DO		0x00000008
+#define SGE_EEPROM_DI		0x00000004
+#define SGE_EEPROM_CLK		0x00000002
+#define SGE_EEPROM_CS		0x00000001
+
 typedef struct sge
 {
 	char name[8];
@@ -75,6 +99,8 @@ typedef struct sge
 	
 	int client;
 	size_t rx_size;
+	
+	int RGMII;
 }
 sge_t;
 

@@ -23,6 +23,8 @@ static void sge_init(message *mp);
 static void sge_init_pci(void);
 static int sge_probe(sge_t *e, int skip);
 static int sge_init_hw(sge_t *e);
+static void sge_init_addr(sge_t *e);
+static void sge_init_buf(sge_t *e);
 static void sge_reset_hw(sge_t *e);
 static void sge_interrupt(message *mp);
 static void sge_stop(sge_t *e);
@@ -30,6 +32,7 @@ static uint32_t sge_reg_read(sge_t *e, uint32_t reg);
 static void sge_reg_write(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_set(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_unset(sge_t *e, uint32_t reg, uint32_t value);
+static u16_t read_eeprom(void *e, int reg);
 static void sge_writev_s(message *mp, int from_int);
 static void sge_readv_s(message *mp, int from_int);
 static void sge_getstat_s(message *mp);
@@ -279,7 +282,8 @@ static int sge_probe(sge_t *e, int skip)
 	if (!(cr & PCI_CR_MAST_EN))
 		pci_attr_w16(devind, PCI_CR, cr | PCI_CR_MAST_EN);
 
-	printf("%s: using I/O address %p, IRQ %d\n",
+	printf("sge_probe()\n");
+	printf("%s: MEM at %p, IRQ %d\n",
 		e->name, e->regs, e->irq);
 
 	return TRUE;
@@ -314,9 +318,72 @@ sge_t *e;
 	sge_reset_hw(e);
 
 	/* Initialization routine */
+	printf("sge_init_hw()\n");
 	printf("%s: MEM at %p, IRQ %d\n", e->name, e->regs, e->irq);
+	sge_init_addr(e);
+    sge_init_buf(e);
 
 	return TRUE;
+}
+
+
+/*===========================================================================*
+ *                             sge_init_addr                                 *
+ *===========================================================================*/
+static void sge_init_addr(e)
+sge_t *e;
+{
+	static char eakey[] = SGE_ENVVAR "#_EA";
+	static char eafmt[] = "x:x:x:x:x:x";
+	u16_t val;
+    int i;
+    long v;
+	
+	/*
+     * Do we have a user defined ethernet address?
+     */
+    eakey[sizeof(SGE_ENVVAR)-1] = '0' + sge_instance;
+    
+    for (i = 0; i < 6; i++)
+	{
+		if (env_parse(eakey, eafmt, i, &v, 0x00L, 0xFFL) != EP_SET)
+			break;
+		e->address.ea_addr[i] = v;
+	}
+	
+	/* Nothing was read or not everything was read? */
+	if (i != 6)
+	{
+		for (i = 0; i < 3; i++)
+		{
+			val = read_eeprom(e, SGE_EEPADDR_MAC + i);
+		    e->address.ea_addr[(i * 2)]     = (val & 0xff);
+		    e->address.ea_addr[(i * 2) + 1] = (val & 0xff00) >> 8;
+		}
+	}
+	
+	printf("%s: Ethernet Address %x:%x:%x:%x:%x:%x\n", e->name,
+		    e->address.ea_addr[0], e->address.ea_addr[1],
+		    e->address.ea_addr[2], e->address.ea_addr[3],
+		    e->address.ea_addr[4], e->address.ea_addr[5]);
+	
+	if ((read_eeprom(e, SGE_EEPADDR_INFO) & 0x80) != 0)
+	{
+		e->RGMII = 1;
+	}
+	else
+	{
+		e->RGMII = 0;
+	}
+}
+
+/*===========================================================================*
+ *                              sge_init_buf                                 *
+ *===========================================================================*/
+static void sge_init_buf(e)
+sge_t *e;
+{
+	
 }
 
 /*===========================================================================*
@@ -325,9 +392,54 @@ sge_t *e;
 static void sge_reset_hw(e)
 sge_t *e;
 {
-	/* Reset routine goes here */
+	sge_reg_write(e, SGE_REG_INTRMASK, 0);
+	sge_reg_write(e, SGE_REG_INTRSTATUS, 0xffffffff);
+	
+	sge_reg_write(e, SGE_REG_TX_CTL, 0x00001c00);
+	sge_reg_write(e, SGE_REG_RX_CTL, 0x001e1c00);
+	
+	sge_reg_write(e, SGE_REG_INTRCONTROL, 0x8000);
+	sge_reg_read(e, SGE_REG_INTRCONTROL);
+	micro_delay(100);
+	sge_reg_write(e, SGE_REG_INTRCONTROL, 0x0);
 
-	tickdelay(1);
+	sge_reg_write(e, SGE_REG_INTRMASK, 0);
+	sge_reg_write(e, SGE_REG_INTRSTATUS, 0xffffffff);
+
+	sge_reg_write(e, SGE_REG_TX_DESC, 0x0);
+	sge_reg_write(e, SGE_REG_RESERVED0, 0x0);
+	sge_reg_write(e, SGE_REG_RX_DESC, 0x0);
+	sge_reg_write(e, SGE_REG_RESERVED1, 0x0);
+
+	sge_reg_write(e, SGE_REG_PMCONTROL, 0xffc00000);
+	sge_reg_write(e, SGE_REG_RESERVED2, 0x0);
+	
+	if (e->RGMII)
+	{
+		sge_reg_write(e, SGE_REG_STATIONCONTROL, 0x04008001);
+	}
+	else
+	{
+		sge_reg_write(e, SGE_REG_STATIONCONTROL, 0x04000001);
+	}
+	
+	sge_reg_write(e, SGE_REG_GMACIOCR, 0x0);
+	sge_reg_write(e, SGE_REG_GMACIOCTL, 0x0);
+
+	sge_reg_write(e, SGE_REG_TXMACCONTROL, 0x00002364);
+	sge_reg_write(e, SGE_REG_TXMACTIMELIMIT, 0x0000000f);
+
+	sge_reg_write(e, SGE_REG_RGMIIDELAY, 0x0);
+	sge_reg_write(e, SGE_REG_RESERVED3, 0x0);
+	sge_reg_write(e, SGE_REG_RXMACCONTROL, 0x00000252);
+
+	sge_reg_write(e, SGE_REG_RXHASHTABLE, 0x0);
+	sge_reg_write(e, SGE_REG_RXHASHTABLE2, 0x0);
+
+	sge_reg_write(e, SGE_REG_RXWAKEONLAN, 0x80ff0000);
+	sge_reg_write(e, SGE_REG_RXWAKEONLANDATA, 0x80ff0000);
+	sge_reg_write(e, SGE_REG_RXMPSCONTROL, 0x0);
+	sge_reg_write(e, SGE_REG_RESERVED4, 0x0);
 }
 
 /*===========================================================================*
@@ -365,6 +477,21 @@ message *mp;
 static void sge_interrupt(mp)
 message *mp;
 {
+	sge_t *e;
+	u32_t cause;
+
+	/*
+	 * Check the card for interrupt reason(s).
+	 */
+	e = &sge_state;
+
+	/* Re-enable interrupts. */
+	if (sys_irqenable(&e->irq_hook) != OK)
+	{
+		panic("failed to re-enable IRQ");
+	}
+
+	/* Read the Interrupt Cause Read register. */
 	
 }
 
@@ -374,7 +501,7 @@ message *mp;
 static void sge_stop(e)
 sge_t *e;
 {
-	printf("%s: MEM at %p, IRQ %d\n", e->name, e->regs, e->irq);
+	printf("%s: stopping...\n", e->name);
 
 	sge_reset_hw(e);
 
@@ -441,6 +568,30 @@ uint32_t value;
 
 	/* Unset value, and write back. */
 	sge_reg_write(e, reg, data & ~value);
+}
+
+/*===========================================================================*
+ *                              read_eeprom                                  *
+ *===========================================================================*/
+static u16_t read_eeprom(v, reg)
+void *v;
+int reg;
+{
+	sge_t *e = (sge_t *) v;
+	u32_t data;
+	u32_t read_cmd;
+
+	/* Request EEPROM read. */
+	read_cmd = SGE_EEPROM_REQ | SGE_EEPROM_OPER | (reg << SGE_EEPROM_OFFSET_SHIFT);
+	sge_reg_write(e, SGE_REG_EEPROMINTERFACE, read_cmd);
+
+	/* Wait 500ms */
+	micro_delay(500);
+
+	/* Wait until ready. */
+	while (!((data = (sge_reg_read(e, SGE_REG_EEPROMINTERFACE))) & SGE_EEPROM_REQ));
+
+	return (u16_t)((data & SGE_EEPROM_DATA) >> SGE_EEPROM_DATA_SHIFT);
 }
 
 /*===========================================================================*
