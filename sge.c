@@ -38,6 +38,7 @@ static void sge_readv_s(message *mp, int from_int);
 static void sge_getstat_s(message *mp);
 static void reply(sge_t *e);
 static void mess_reply(message *req, message *reply);
+static void sge_dump(message *m);
 
 /* SEF functions and variables. */
 static void sef_local_startup(void);
@@ -77,6 +78,9 @@ int main(int argc, char *argv[])
 				sge_interrupt(&m);
 				break;
 			case CLOCK:
+				break;
+			case TTY_PROC_NR:
+				sge_dump(&m);
 				break;
 			}
 			continue;
@@ -120,8 +124,14 @@ static void sef_local_startup()
 static int sef_cb_init_fresh(int UNUSED(type), sef_init_info_t *UNUSED(info))
 {
 	/* Initialize the SiS FE Driver. */
+	int r, fkeys, sfkeys;
 	long v;
-	int r;
+
+	/* Request function key for debug dumps */
+	fkeys = sfkeys = 0;
+	bit_set(sfkeys, 7);
+	if ((r = fkey_map(&fkeys, &sfkeys)) != OK)
+		printf("sge: couldn't bind Shift+F7 key (%d)\n", r);
 
 	v = 0;
 	(void)env_parse("instance", "d", 0, &v, 0, 255);
@@ -241,25 +251,25 @@ static int sge_probe(sge_t *e, int skip)
 	switch (did)
 	{
 	case SGE_DEV_0190:
-		printf("Found SiS 0190.\n");
+		/* Inform the user about the new card. */
+		if (!(dname = pci_dev_name(vid, did)))
+		{
+			dname = "SiS 190 PCI Fast Ethernet Adapter";
+		}
 		break;
 	case SGE_DEV_0191:
-		printf("Found SiS 0191.\n");
+		/* Inform the user about the new card. */
+		if (!(dname = pci_dev_name(vid, did)))
+		{
+			dname = "SiS 191 PCI Gigabit Ethernet Adapter";
+		}
 		break;
 	default:
-		printf("That may be a SiS device.\n");
-		break;
-	}
-
-	/* Inform the user about the new card. */
-	if (!(dname = pci_dev_name(vid, did)))
-	{
-		dname = "SiS 190/191 PCI Fast/Gigabit Ethernet Adapter";
-	}
-
-	printf("%s: %s (%04x/%04x/%02x) at %s\n",
+		printf("%s: %s (%04x/%04x/%02x) at %s\n",
 		e->name, dname, vid, did, e->revision, 
 		pci_slot_name(devind));
+		break;
+	}
 
 	/* Reserve PCI resources found. */
 	if ((r = pci_reserve_ok(devind)) != OK)
@@ -654,4 +664,30 @@ message *reply_mess;
 	{
 		panic("unable to send reply message");
 	}
+}
+
+/*===========================================================================*
+ *                               sge_dump                                    *
+ *===========================================================================*/
+static void sge_dump(m)
+message *m;
+{
+	sge_t *e;
+	e = &sge_state;
+	
+	long i;
+
+	printf("Show Mac Registers\n");
+	for(i = 0; i < 0x80; i+=4)
+	{
+		if((i%16) == 0)
+			printf("%2.2xh: ", (char)i);
+		
+		printf("%8.8x ", sge_reg_read(e, i));
+		
+		if((i%16) == 12)
+			printf("\n");
+	
+	}
+	printf("\n");	
 }
