@@ -255,6 +255,9 @@ static int sge_probe(sge_t *e, int skip)
 		if (!(dname = pci_dev_name(vid, did)))
 		{
 			dname = "SiS 190 PCI Fast Ethernet Adapter";
+			printf("%s: %s (%04x/%04x/%02x) at %s\n",
+			e->name, dname, vid, did, e->revision, 
+			pci_slot_name(devind));
 		}
 		break;
 	case SGE_DEV_0191:
@@ -262,12 +265,12 @@ static int sge_probe(sge_t *e, int skip)
 		if (!(dname = pci_dev_name(vid, did)))
 		{
 			dname = "SiS 191 PCI Gigabit Ethernet Adapter";
+			printf("%s: %s (%04x/%04x/%02x) at %s\n",
+			e->name, dname, vid, did, e->revision, 
+			pci_slot_name(devind));
 		}
 		break;
 	default:
-		printf("%s: %s (%04x/%04x/%02x) at %s\n",
-		e->name, dname, vid, did, e->revision, 
-		pci_slot_name(devind));
 		break;
 	}
 
@@ -292,9 +295,11 @@ static int sge_probe(sge_t *e, int skip)
 	if (!(cr & PCI_CR_MAST_EN))
 		pci_attr_w16(devind, PCI_CR, cr | PCI_CR_MAST_EN);
 
-	printf("sge_probe()\n");
-	printf("%s: MEM at %p, IRQ %d\n",
-		e->name, e->regs, e->irq);
+	/* Where to read MAC from? */
+	e->MAC_APC = pci_attr_r8(devind, 0x73);
+
+	printf("%s: Is MAC at APC? %d\n",
+		e->name, e->MAC_APC);
 
 	return TRUE;
 }
@@ -328,8 +333,6 @@ sge_t *e;
 	sge_reset_hw(e);
 
 	/* Initialization routine */
-	printf("sge_init_hw()\n");
-	printf("%s: MEM at %p, IRQ %d\n", e->name, e->regs, e->irq);
 	sge_init_addr(e);
     sge_init_buf(e);
 
@@ -364,11 +367,36 @@ sge_t *e;
 	/* Nothing was read or not everything was read? */
 	if (i != 6)
 	{
-		for (i = 0; i < 3; i++)
+		/* Embedded SiS190 has MAC in southbridge. */
+		if (e->MAC_APC & 0x1)
 		{
-			val = read_eeprom(e, SGE_EEPADDR_MAC + i);
-		    e->address.ea_addr[(i * 2)]     = (val & 0xff);
-		    e->address.ea_addr[(i * 2) + 1] = (val & 0xff00) >> 8;
+			/*
+			// Implementar a conexão com a ponte ISA.
+			*/
+			e->address.ea_addr[0] = 0;
+			e->address.ea_addr[1] = 0;
+			e->address.ea_addr[2] = 0;
+			e->address.ea_addr[3] = 0;
+			e->address.ea_addr[4] = 0;
+			e->address.ea_addr[5] = 0;
+		}
+		/* Standalone SiS190 has MAC in EEPROM. */
+		else
+		{
+			for (i = 0; i < 3; i++)
+			{
+				val = read_eeprom(e, SGE_EEPADDR_MAC + i);
+			    e->address.ea_addr[(i * 2)]     = (val & 0xff);
+			    e->address.ea_addr[(i * 2) + 1] = (val & 0xff00) >> 8;
+			}
+			if ((read_eeprom(e, SGE_EEPADDR_INFO) & 0x80) != 0)
+			{
+				e->RGMII = 1;
+			}
+			else
+			{
+				e->RGMII = 0;
+			}
 		}
 	}
 	
@@ -376,15 +404,6 @@ sge_t *e;
 		    e->address.ea_addr[0], e->address.ea_addr[1],
 		    e->address.ea_addr[2], e->address.ea_addr[3],
 		    e->address.ea_addr[4], e->address.ea_addr[5]);
-	
-	if ((read_eeprom(e, SGE_EEPADDR_INFO) & 0x80) != 0)
-	{
-		e->RGMII = 1;
-	}
-	else
-	{
-		e->RGMII = 0;
-	}
 }
 
 /*===========================================================================*

@@ -101,6 +101,7 @@ typedef struct sge
 	size_t rx_size;
 	
 	int RGMII;
+	int MAC_APC;
 }
 sge_t;
 
