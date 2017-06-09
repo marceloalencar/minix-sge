@@ -519,9 +519,18 @@ message *mp;
 static void sge_stop(e)
 sge_t *e;
 {
+	uint32_t val;
 	printf("%s: stopping...\n", e->name);
 
 	sge_reset_hw(e);
+
+	sge_reg_write(e, SGE_REG_INTRMASK, 0x0);
+	micro_delay(2000);
+
+	val = sge_reg_read(e, SGE_REG_INTRCONTROL) | 0x8000;
+	sge_reg_write(e, SGE_REG_INTRCONTROL, val);
+	micro_delay(50);
+	sge_reg_write(e, SGE_REG_INTRCONTROL, val & ~0x8000);
 
 	exit(EXIT_SUCCESS);
 }
@@ -713,7 +722,7 @@ message *m;
 	printf("EEPROM data\n");
 	for(i = 0; i < 0x10; i+=1)
 	{
-		if(i%0x7) == 0)
+		if(i%0x7 == 0)
 			printf("%2.2xh: ", (char)i);
 		
 		printf("%4.4x ", read_eeprom(e, i));
