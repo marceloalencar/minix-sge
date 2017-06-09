@@ -32,7 +32,7 @@ static uint32_t sge_reg_read(sge_t *e, uint32_t reg);
 static void sge_reg_write(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_set(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_unset(sge_t *e, uint32_t reg, uint32_t value);
-static u16_t read_eeprom(void *e, int reg);
+static uint16_t read_eeprom(void *e, int reg);
 static void sge_writev_s(message *mp, int from_int);
 static void sge_readv_s(message *mp, int from_int);
 static void sge_getstat_s(message *mp);
@@ -255,9 +255,6 @@ static int sge_probe(sge_t *e, int skip)
 		if (!(dname = pci_dev_name(vid, did)))
 		{
 			dname = "SiS 190 PCI Fast Ethernet Adapter";
-			printf("%s: %s (%04x/%04x/%02x) at %s\n",
-			e->name, dname, vid, did, e->revision, 
-			pci_slot_name(devind));
 		}
 		break;
 	case SGE_DEV_0191:
@@ -265,9 +262,6 @@ static int sge_probe(sge_t *e, int skip)
 		if (!(dname = pci_dev_name(vid, did)))
 		{
 			dname = "SiS 191 PCI Gigabit Ethernet Adapter";
-			printf("%s: %s (%04x/%04x/%02x) at %s\n",
-			e->name, dname, vid, did, e->revision, 
-			pci_slot_name(devind));
 		}
 		break;
 	default:
@@ -296,10 +290,15 @@ static int sge_probe(sge_t *e, int skip)
 		pci_attr_w16(devind, PCI_CR, cr | PCI_CR_MAST_EN);
 
 	/* Where to read MAC from? */
-	e->MAC_APC = pci_attr_r8(devind, 0x73);
-
-	printf("%s: Is MAC at APC? %d\n",
-		e->name, e->MAC_APC);
+	int isAPC = pci_attr_r8(devind, 0x73);
+	if ((isAPC & 0x1) == 0)
+	{
+		e->MAC_APC = 0;
+	}
+	else
+	{
+		e->MAC_APC = 1;
+	}
 
 	return TRUE;
 }
@@ -368,17 +367,12 @@ sge_t *e;
 	if (i != 6)
 	{
 		/* Embedded SiS190 has MAC in southbridge. */
-		if (e->MAC_APC & 0x1)
+		if (e->MAC_APC)
 		{
 			/*
-			// Implementar a conexão com a ponte ISA.
+			// ISA Bridge read not implemented.
 			*/
-			e->address.ea_addr[0] = 0;
-			e->address.ea_addr[1] = 0;
-			e->address.ea_addr[2] = 0;
-			e->address.ea_addr[3] = 0;
-			e->address.ea_addr[4] = 0;
-			e->address.ea_addr[5] = 0;
+			panic("Read MAC from APC not implemented...\n");
 		}
 		/* Standalone SiS190 has MAC in EEPROM. */
 		else
@@ -399,11 +393,6 @@ sge_t *e;
 			}
 		}
 	}
-	
-	printf("%s: Ethernet Address %x:%x:%x:%x:%x:%x\n", e->name,
-		    e->address.ea_addr[0], e->address.ea_addr[1],
-		    e->address.ea_addr[2], e->address.ea_addr[3],
-		    e->address.ea_addr[4], e->address.ea_addr[5]);
 }
 
 /*===========================================================================*
@@ -602,7 +591,7 @@ uint32_t value;
 /*===========================================================================*
  *                              read_eeprom                                  *
  *===========================================================================*/
-static u16_t read_eeprom(v, reg)
+static uint16_t read_eeprom(v, reg)
 void *v;
 int reg;
 {
@@ -611,14 +600,18 @@ int reg;
 	u32_t read_cmd;
 
 	/* Request EEPROM read. */
-	read_cmd = SGE_EEPROM_REQ | SGE_EEPROM_OPER | (reg << SGE_EEPROM_OFFSET_SHIFT);
+	read_cmd = SGE_EEPROM_REQ | SGE_EEPROM_READ | (reg << SGE_EEPROM_OFFSET_SHIFT);
 	sge_reg_write(e, SGE_REG_EEPROMINTERFACE, read_cmd);
 
 	/* Wait 500ms */
 	micro_delay(500);
 
 	/* Wait until ready. */
-	while (!((data = (sge_reg_read(e, SGE_REG_EEPROMINTERFACE))) & SGE_EEPROM_REQ));
+	do
+	{
+		data = sge_reg_read(e, SGE_REG_EEPROMINTERFACE);
+		micro_delay(100);
+	} while ((data & SGE_EEPROM_REQ) != 0);
 
 	return (u16_t)((data & SGE_EEPROM_DATA) >> SGE_EEPROM_DATA_SHIFT);
 }
@@ -696,6 +689,13 @@ message *m;
 	
 	long i;
 
+	/* MAC Address */
+	printf("%s: Ethernet Address %x:%x:%x:%x:%x:%x\n", e->name,
+		    e->address.ea_addr[0], e->address.ea_addr[1],
+		    e->address.ea_addr[2], e->address.ea_addr[3],
+		    e->address.ea_addr[4], e->address.ea_addr[5]);
+
+	/* Mac Registers (Memory Mapped)*/
 	printf("Show Mac Registers\n");
 	for(i = 0; i < 0x80; i+=4)
 	{
@@ -706,7 +706,19 @@ message *m;
 		
 		if((i%16) == 12)
 			printf("\n");
-	
 	}
-	printf("\n");	
+	printf("\n");
+	
+	/* EEPROM */
+	printf("EEPROM data\n");
+	for(i = 0; i < 0x10; i+=1)
+	{
+		if(i%0x7) == 0)
+			printf("%2.2xh: ", (char)i);
+		
+		printf("%4.4x ", read_eeprom(e, i));
+		
+		if(i == 0x6)
+			printf("\n");
+	}
 }
