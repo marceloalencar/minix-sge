@@ -32,7 +32,9 @@ static uint32_t sge_reg_read(sge_t *e, uint32_t reg);
 static void sge_reg_write(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_set(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_unset(sge_t *e, uint32_t reg, uint32_t value);
-static uint16_t read_eeprom(void *e, int reg);
+static uint16_t read_eeprom(sge_t *e, int reg);
+static uint16_t sge_mii_read(sge_t *e, uint32_t phy, uint32_t reg);
+static void sge_mii_write(sge_t *e, uint32_t phy, uint32_t reg, uint32_t data);
 static void sge_writev_s(message *mp, int from_int);
 static void sge_readv_s(message *mp, int from_int);
 static void sge_getstat_s(message *mp);
@@ -598,13 +600,65 @@ uint32_t value;
 }
 
 /*===========================================================================*
+ *                              sge_mii_read                                 *
+ *===========================================================================*/
+static uint16_t sge_mii_read(e, phy, reg)
+sge_t *e;
+uint32_t phy;
+uint32_t reg;
+{
+	u32_t read_cmd;
+	u32_t data;
+
+	phy = (phy & 0x1f) << 6;
+	reg = (reg & 0x1f) << 11;
+	read_cmd = SGE_MII_REQ | SGE_MII_READ | phy | reg;
+
+	sge_reg_write(e, SGE_REG_GMIICONTROL, read_cmd);
+	micro_delay(50);
+
+	do
+	{
+		data = sge_reg_read(e, SGE_REG_GMIICONTROL);
+		micro_delay(50);
+	} while ((data & SGE_MII_REQ) != 0);
+
+	return (u16_t)((data & SGE_MII_DATA) >> SGE_MII_DATA_SHIFT);
+}
+
+/*===========================================================================*
+ *                             sge_mii_write                                 *
+ *===========================================================================*/
+static void sge_mii_write(e, phy, reg, data)
+sge_t *e;
+uint32_t phy;
+uint32_t reg;
+uint32_t data;
+{
+	u32_t write_cmd;
+
+	phy = (phy & 0x1f) << 6;
+	reg = (reg & 0x1f) << 11;
+	data = (data & 0xffff) << SGE_MII_DATA_SHIFT;
+	write_cmd = SGE_MII_REQ | SGE_MII_WRITE | phy | reg | data;
+
+	sge_reg_write(e, SGE_REG_GMIICONTROL, write_cmd);
+	micro_delay(500);
+
+	do
+	{
+		data = sge_reg_read(e, SGE_REG_GMIICONTROL);
+		micro_delay(50);
+	} while ((data & SGE_MII_REQ) != 0);
+}
+
+/*===========================================================================*
  *                              read_eeprom                                  *
  *===========================================================================*/
-static uint16_t read_eeprom(v, reg)
-void *v;
+static uint16_t read_eeprom(e, reg)
+sge_t *e;
 int reg;
 {
-	sge_t *e = (sge_t *) v;
 	u32_t data;
 	u32_t read_cmd;
 

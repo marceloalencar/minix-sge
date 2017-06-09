@@ -85,6 +85,13 @@
 #define SGE_EEPROM_CLK		0x00000002
 #define SGE_EEPROM_CS		0x00000001
 
+/* MII Interface */
+#define SGE_MII_DATA		0xffff0000
+#define SGE_MII_DATA_SHIFT		16
+#define SGE_MII_REQ		0x00000010
+#define SGE_MII_READ		0x00000000
+#define SGE_MII_WRITE		0x00000020
+
 typedef struct sge
 {
 	char name[8];
