@@ -37,6 +37,13 @@
 #define SGE_DUPLEX_ON		1
 #define SGE_DUPLEX_OFF		0
 
+/* Buffer info */
+#define SGE_BUF_SIZE		1536
+#define SGE_RXDESC_NR		32
+#define SGE_TXDESC_NR		32
+#define SGE_RX_TOTALSIZE		SGE_RXDESC_NR*sizeof(sge_rx_desc_t)
+#define SGE_TX_TOTALSIZE		SGE_TXDESC_NR*sizeof(sge_tx_desc_t)
+
 /* Register Addresses */
 #define	SGE_REG_TX_CTL			0x00 /* Tx Host Control/status Register */
 #define	SGE_REG_TX_DESC			0x04 /* Tx Home Descriptor Base Register */
@@ -155,6 +162,24 @@
 #define SGE_MIIAUTON_TX_FULL		0x0100
 #define SGE_MIIAUTON_T_FULL		0x0040
 
+typedef struct sge_rx_desc
+{
+	uint32_t StsSize;
+	uint32_t PktInfo;
+	uint32_t buffer;
+	uint32_t EOD;
+}
+sge_rx_desc_t;
+
+typedef struct sge_tx_desc
+{
+	uint32_t PktSize;
+	uint32_t cmdsts;
+	uint32_t buffer;
+	uint32_t EOD;
+}
+sge_tx_desc_t;
+
 typedef struct sge
 {
 	char name[8];
@@ -173,6 +198,18 @@ typedef struct sge
 	int link_speed;
 	int duplex_mode;
 	
+	sge_rx_desc_t *rx_desc;
+    phys_bytes rx_desc_p;
+    int rx_desc_count;
+    char *rx_buffer;
+    int rx_buffer_size;
+
+    sge_tx_desc_t *tx_desc;
+    phys_bytes tx_desc_p;
+    int tx_desc_count;
+    char *tx_buffer;
+    int tx_buffer_size;
+
 	int client;
 	size_t rx_size;
 	

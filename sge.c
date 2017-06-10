@@ -319,6 +319,8 @@ static int sge_init_hw(e)
 sge_t *e;
 {
 	int r, i;
+	uint32_t control;
+	uint16_t filter;
 
 	e->status = SGE_ENABLED;
 	e->irq_hook = e->irq;
@@ -348,6 +350,37 @@ sge_t *e;
 	{
 		return -ENODEV;
 	}
+
+	sge_reg_write(e, SGE_REG_RXMACADDR, 0);
+
+	/* Set filter */
+	filter = sge_reg_read(e, SGE_REG_RXMACCONTROL);
+	/* disable disable packet filtering before address is set */
+	sge_reg_write(e, SGE_REG_RXMACCONTROL, filter & ~0xf00);
+	/* Write MAC to registers */
+	for (i = 0; i < 6 ; i++)
+	{
+		uint8_t w;
+
+		w = (uint8_t) e->address.ea_addr[i];
+		sge_reg_write(e, SGE_REG_RXMACADDR + i, w);
+	}
+	/* Enable filter */
+	filter = filter & ~0x100;
+	sge_reg_write(e, SGE_REG_RXMACCONTROL, filter);
+
+	/*
+	set_rx_mode(net_dev);
+	*/
+
+	/* Enable interrupts */
+	sge_reg_write(e, SGE_REG_INTRMASK, SGE_INTRS);
+
+	/* Enable TX/RX */
+	control = sge_reg_read(e, SGE_REG_TX_CTL);
+	sge_reg_write(e, SGE_REG_TX_CTL, control | 0x1);
+	control = sge_reg_read(e, SGE_REG_RX_CTL);
+	sge_reg_write(e, SGE_REG_RX_CTL, control | 0x1 | 0x10);
 
 	return TRUE;
 }
@@ -415,7 +448,79 @@ sge_t *e;
 static void sge_init_buf(e)
 sge_t *e;
 {
-	
+	int i;
+	phys_bytes rx_buff_p;
+    phys_bytes tx_buff_p;
+
+    e->rx_desc_count = SGE_RXDESC_NR;
+    e->tx_desc_count = SGE_TXDESC_NR;
+
+    if (!e->rx_desc)
+    {
+	    /* Allocate RX descriptors. */
+	    if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
+			&e->rx_desc_p)) == NULL)
+		{
+			panic("%s: Failed to allocate RX descriptors.\n", e->name);
+		}
+	    memset(e->rx_desc, 0, SGE_RX_TOTALSIZE + 15);
+
+	    /* Allocate RX buffers */
+	    e->rx_buffer_size = SGE_RXDESC_NR * SGE_BUF_SIZE;
+
+	    if ((e->rx_buffer = alloc_contig(e->rx_buffer_size,
+			AC_ALIGN4K, &rx_buff_p)) == NULL)
+		{
+		    panic("%s: Failed to allocate RX buffers.\n", e->name);
+		}
+
+		/* Setup receive descriptors. */
+		for (i = 0; i < SGE_RXDESC_NR; i++)
+		{
+			e->rx_desc[i].buffer = rx_buff_p + (i * SGE_BUF_SIZE);
+			e->rx_desc[i].StsSize = 0;
+			e->rx_desc[i].PktInfo = 0;
+		    if(i == (SGE_RXDESC_NR - 1))
+				e->rx_desc[i].EOD = 0x80000000;
+			else
+				e->rx_desc[i].EOD = 0;
+		}
+    }
+
+    if (!e->tx_desc)
+    {
+	    /* Allocate TX descriptors. */
+	    if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
+			&e->tx_desc_p)) == NULL)
+		{
+			panic("%s: Failed to allocate TX descriptors.\n", e->name);
+		}
+		memset(e->tx_desc, 0, SGE_TX_TOTALSIZE + 15);
+
+		/* Allocate TX buffers */
+	    e->tx_buffer_size = SGE_TXDESC_NR * SGE_BUF_SIZE;
+
+	    if ((e->tx_buffer = alloc_contig(e->tx_buffer_size,
+			AC_ALIGN4K, &tx_buff_p)) == NULL)
+		{
+		    panic("%s: Failed to allocate TX buffers.\n", e->name);
+		}
+
+		/* Setup receive descriptors. */
+		for (i = 0; i < SGE_TXDESC_NR; i++)
+		{
+		    e->tx_desc[i].buffer = tx_buff_p + (i * SGE_BUF_SIZE);
+		    e->tx_desc[i].PktSize = 0;
+			e->tx_desc[i].cmdsts = 0;
+		    if(i == (SGE_TXDESC_NR - 1))
+				e->tx_desc[i].EOD = 0x80000000;
+			else
+				e->tx_desc[i].EOD = 0;
+		}
+	}
+
+	sge_reg_write(e, SGE_REG_TX_DESC, tx_buff_p);
+	sge_reg_write(e, SGE_REG_RX_DESC, rx_buff_p);
 }
 
 /*===========================================================================*
