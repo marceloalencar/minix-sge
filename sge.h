@@ -30,7 +30,14 @@
 #define SGE_RECEIVED	(1 << 4)
 #define SGE_TRANSMIT	(1 << 5)
 
-/* Registers */
+/* Speed/Duplex */
+#define SGE_SPEED_10		10
+#define SGE_SPEED_100		100
+#define SGE_SPEED_1000		1000
+#define SGE_DUPLEX_ON		1
+#define SGE_DUPLEX_OFF		0
+
+/* Register Addresses */
 #define	SGE_REG_TX_CTL			0x00 /* Tx Host Control/status Register */
 #define	SGE_REG_TX_DESC			0x04 /* Tx Home Descriptor Base Register */
 #define	SGE_REG_RESERVED0		0x08 /* Reserved */
@@ -67,6 +74,36 @@
 #define	SGE_REG_RXMPSCONTROL		0x78 /* Rx MPS Control Register */
 #define	SGE_REG_RESERVED4		0x7c /* Reserved */
 
+/* Registers Interface */
+#define SGE_REGSC_FULL		0x0f000000
+#define	SGE_REGSC_LOOPBACK		0x80000000
+#define	SGE_REGSC_RGMII		0x00008000
+#define	SGE_REGSC_FDX			0x00001000
+#define	SGE_REGSC_SPEED_MASK		0x00000c00
+#define	SGE_REGSC_SPEED_10		0x00000400
+#define	SGE_REGSC_SPEED_100		0x00000800
+#define	SGE_REGSC_SPEED_1000		0x00000c00
+
+/* Interrupts */
+#define	SGE_INTR_SOFT		0x40000000
+#define	SGE_INTR_TIMER		0x20000000
+#define	SGE_INTR_PAUSE_FRAME	0x00080000
+#define	SGE_INTR_MAGIC_FRAME	0x00040000
+#define	SGE_INTR_WAKE_FRAME		0x00020000
+#define	SGE_INTR_LINK		0x00010000
+#define	SGE_INTR_RX_IDLE		0x00000080
+#define	SGE_INTR_RX_DONE		0x00000040
+#define	SGE_INTR_TXQ1_IDLE		0x00000020
+#define	SGE_INTR_TXQ1_DONE		0x00000010
+#define	SGE_INTR_TX_IDLE		0x00000008
+#define	SGE_INTR_TX_DONE		0x00000004
+#define	SGE_INTR_RX_HALT		0x00000002
+#define	SGE_INTR_TX_HALT		0x00000001
+#define	SGE_INTRS							\
+	(SGE_INTR_RX_IDLE | SGE_INTR_RX_DONE | SGE_INTR_TXQ1_IDLE |			\
+	 SGE_INTR_TXQ1_DONE |SGE_INTR_TX_IDLE | SGE_INTR_TX_DONE |			\
+	 SGE_INTR_TX_HALT | SGE_INTR_RX_HALT)
+
 /* EEPROM Addresses */
 #define	SGE_EEPADDR_SIG		0x00 /* EEPROM Signature */
 #define	SGE_EEPADDR_CLK		0x01 /* EEPROM Clock */
@@ -85,22 +122,56 @@
 #define SGE_EEPROM_CLK		0x00000002
 #define SGE_EEPROM_CS		0x00000001
 
+/* MII Addresses */
+#define SGE_MIIADDR_CONTROL		0x00
+#define SGE_MIIADDR_STATUS		0x01
+#define SGE_MIIADDR_PHY_ID0		0x02
+#define SGE_MIIADDR_PHY_ID1		0x03
+#define SGE_MIIADDR_AUTO_ADV		0x04
+#define SGE_MIIADDR_AUTO_LPAR		0x05
+#define SGE_MIIADDR_AUTO_EXT		0x06
+#define SGE_MIIADDR_AUTO_GADV		0x09
+#define SGE_MIIADDR_AUTO_GLPAR		0x0a
+
 /* MII Interface */
+#define SGE_MIISTATUS_LINK		0x0004
+#define SGE_MIISTATUS_AUTO_DONE		0x0020
+#define SGE_MIISTATUS_CAN_TX		0x2000
+#define SGE_MIISTATUS_CAN_TX_FDX		0x4000
+
+#define SGE_MIICTRL_RST_AUTO		0x0200
+#define SGE_MIICTRL_ISOLATE		0x0400
+#define SGE_MIICTRL_AUTO		0x1000
+#define SGE_MIICTRL_RESET		0x8000
+
 #define SGE_MII_DATA		0xffff0000
 #define SGE_MII_DATA_SHIFT		16
 #define SGE_MII_REQ		0x00000010
 #define SGE_MII_READ		0x00000000
 #define SGE_MII_WRITE		0x00000020
 
+#define SGE_MIIAUTON_NP		0x8000
+#define SGE_MIIAUTON_TX		0x0080
+#define SGE_MIIAUTON_TX_FULL		0x0100
+#define SGE_MIIAUTON_T_FULL		0x0040
+
 typedef struct sge
 {
 	char name[8];
+	int model;
 	int status;
 	int irq;
 	int irq_hook;
 	int revision;
 	u8_t *regs;
 	ether_addr_t address;
+	
+	struct mii_phy *mii;
+	struct mii_phy *first_mii;
+	uint32_t cur_phy;
+	
+	int link_speed;
+	int duplex_mode;
 	
 	int client;
 	size_t rx_size;
@@ -109,5 +180,15 @@ typedef struct sge
 	int MAC_APC;
 }
 sge_t;
+
+struct mii_phy
+{
+	struct mii_phy *next;
+	int addr;
+	uint16_t id0;
+	uint16_t id1;
+	uint16_t status;
+	uint16_t types;
+};
 
 #endif /* !_SGE_H_ */

@@ -33,11 +33,16 @@ static void sge_reg_write(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_set(sge_t *e, uint32_t reg, uint32_t value);
 static void sge_reg_unset(sge_t *e, uint32_t reg, uint32_t value);
 static uint16_t read_eeprom(sge_t *e, int reg);
+static int sge_mii_probe(sge_t *e);
 static uint16_t sge_mii_read(sge_t *e, uint32_t phy, uint32_t reg);
 static void sge_mii_write(sge_t *e, uint32_t phy, uint32_t reg, uint32_t data);
 static void sge_writev_s(message *mp, int from_int);
 static void sge_readv_s(message *mp, int from_int);
 static void sge_getstat_s(message *mp);
+static uint16_t sge_default_phy(sge_t *e);
+static uint16_t sge_reset_phy(sge_t *e, uint32_t addr);
+static void sge_phymode(sge_t *e);
+static void sge_macmode(sge_t *e);
 static void reply(sge_t *e);
 static void mess_reply(message *req, message *reply);
 static void sge_dump(message *m);
@@ -258,6 +263,7 @@ static int sge_probe(sge_t *e, int skip)
 		{
 			dname = "SiS 190 PCI Fast Ethernet Adapter";
 		}
+		e->model = SGE_DEV_0190;
 		break;
 	case SGE_DEV_0191:
 		/* Inform the user about the new card. */
@@ -265,6 +271,7 @@ static int sge_probe(sge_t *e, int skip)
 		{
 			dname = "SiS 191 PCI Gigabit Ethernet Adapter";
 		}
+		e->model = SGE_DEV_0191;
 		break;
 	default:
 		break;
@@ -336,6 +343,11 @@ sge_t *e;
 	/* Initialization routine */
 	sge_init_addr(e);
     sge_init_buf(e);
+
+	if (sge_mii_probe(e) == 0)
+	{
+		return -ENODEV;
+	}
 
 	return TRUE;
 }
@@ -498,21 +510,46 @@ static void sge_interrupt(mp)
 message *mp;
 {
 	sge_t *e;
-	u32_t cause;
+	u32_t status;
 
 	/*
 	 * Check the card for interrupt reason(s).
 	 */
 	e = &sge_state;
 
+	status = sge_reg_read(e, SGE_REG_INTRSTATUS);;
+	if (!(status == 0xffffffff || (status & SGE_INTRS) == 0))
+	{
+		//Acknowledge and disable interrupts
+		sge_reg_write(e, SGE_REG_INTRSTATUS, status);
+		sge_reg_write(e, SGE_REG_INTRMASK, 0);
+
+		/* Read the Interrupt Cause Read register. */
+		do
+		{
+			if ((status & SGE_INTRS) == 0)
+			{
+				/* Nothing */
+				break;
+			}
+			sge_reg_write(e, SGE_REG_INTRSTATUS, status);
+			if (status & (SGE_INTR_TX_DONE | SGE_INTR_TX_IDLE))
+				/* Tx interrupt */
+				printf("%s: TX interrupt issued !!\n", e->name);
+			if (status & (SGE_INTR_RX_DONE | SGE_INTR_RX_IDLE))
+				/* Rx interrupt */
+				printf("%s: RX interrupt issued !!\n", e->name);
+			if (status & SGE_INTR_LINK)
+				printf("%s: Link changed interrupt issued !!\n", e->name);
+		} while (1);
+	}
+	
 	/* Re-enable interrupts. */
+	sge_reg_write(e, SGE_REG_INTRMASK, SGE_INTRS);
 	if (sys_irqenable(&e->irq_hook) != OK)
 	{
 		panic("failed to re-enable IRQ");
 	}
-
-	/* Read the Interrupt Cause Read register. */
-	
 }
 
 /*===========================================================================*
@@ -663,7 +700,8 @@ int reg;
 	u32_t read_cmd;
 
 	/* Request EEPROM read. */
-	read_cmd = SGE_EEPROM_REQ | SGE_EEPROM_READ | (reg << SGE_EEPROM_OFFSET_SHIFT);
+	read_cmd = SGE_EEPROM_REQ | SGE_EEPROM_READ |
+		(reg << SGE_EEPROM_OFFSET_SHIFT);
 	sge_reg_write(e, SGE_REG_EEPROMINTERFACE, read_cmd);
 
 	/* Wait 500ms */
@@ -677,6 +715,267 @@ int reg;
 	} while ((data & SGE_EEPROM_REQ) != 0);
 
 	return (u16_t)((data & SGE_EEPROM_DATA) >> SGE_EEPROM_DATA_SHIFT);
+}
+
+/*===========================================================================*
+ *                             sge_mii_probe                                 *
+ *===========================================================================*/
+static int sge_mii_probe(e)
+sge_t *e;
+{
+	int timeout = 10000;
+	int autoneg_done = 0;
+	struct mii_phy *phy;
+	u32_t addr;
+	u16_t status;
+	u16_t link_status = SGE_MIISTATUS_LINK;
+	
+	/* Search for PHY */
+	for (addr = 0; addr < 32; addr++)
+	{
+		status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
+		status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
+		
+		if (status == 0xffff || status == 0)
+			continue;
+			
+		phy = alloc_contig(sizeof(struct mii_phy), 0, NULL);
+		phy->id0 = sge_mii_read(e, addr, SGE_MIIADDR_PHY_ID0);
+		phy->id1 = sge_mii_read(e, addr, SGE_MIIADDR_PHY_ID1);		
+		phy->addr = addr;
+		phy->status = status;
+		phy->types = 0x2;
+		phy->next = e->mii;
+		e->mii = phy;
+		e->first_mii = phy;
+	}
+	
+	if (e->mii == NULL)
+	{
+		printf("%s: No transceiver found!\n", e->name);
+		return 0;
+	}
+	
+	e->mii = NULL;
+	
+	sge_default_phy(e);
+
+	status = sge_reset_phy(e, e->cur_phy);
+	
+	if(status & SGE_MIISTATUS_LINK)
+	{
+		int i;
+		for (i = 0; i < timeout; i++)
+		{
+			if (!link_status)
+				break;
+
+			micro_delay(1000);
+
+			link_status = link_status ^ (sge_mii_read(e, e->cur_phy,
+				SGE_MIIADDR_STATUS) & link_status);
+		}
+		
+		if (i == timeout)
+		{
+			printf("%s: reset phy and link down now\n", e->name);
+			return -ETIME;
+		}
+	}
+
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+	if (status & SGE_MIISTATUS_LINK)
+	{
+		for(int i = 0; i < 1000; i++)
+		{
+			status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+			if(status & SGE_MIISTATUS_AUTO_DONE)
+			{
+				autoneg_done = 1;
+				break;
+			}
+			micro_delay(100);
+		}
+	}
+
+	if(autoneg_done)
+	{
+		sge_phymode(e);
+		sge_macmode(e);
+		
+	}
+
+	if (e->mii->status & SGE_MIISTATUS_LINK)
+	{
+		if(e->RGMII)
+		{
+			sge_reg_write(e, SGE_REG_RGMIIDELAY, 0x0441);
+			sge_reg_write(e, SGE_REG_RGMIIDELAY, 0x0440);
+		}
+	}
+
+	return 1;
+}
+
+/*===========================================================================*
+ *                            sge_default_phy                                *
+ *===========================================================================*/
+static uint16_t sge_default_phy(e)
+sge_t *e;
+{
+	struct mii_phy *phy = NULL;
+	struct mii_phy *default_phy = NULL;
+	u16_t status;
+	
+	for(phy = e->first_mii; phy; phy = phy->next)
+	{
+		status = sge_mii_read(e, phy->addr, SGE_MIIADDR_STATUS);
+		status = sge_mii_read(e, phy->addr, SGE_MIIADDR_STATUS);
+		
+		if ((status & SGE_MIISTATUS_LINK) && !default_phy && (phy->types != 0))
+		{
+			default_phy = phy;
+		}
+		else
+		{
+			status = sge_mii_read(e, phy->addr, SGE_MIIADDR_CONTROL);
+			sge_mii_write(e, phy->addr, SGE_MIIADDR_CONTROL,
+				status | SGE_MIICTRL_AUTO | SGE_MIICTRL_ISOLATE);
+			if (phy->types == 0x02)
+				default_phy = phy;
+		 }
+	}
+	
+	if (!default_phy)
+		default_phy = e->first_mii;
+	
+	if(e->mii != default_phy )
+	{
+		e->mii = default_phy;
+		e->cur_phy = default_phy->addr;
+		printf("%s: Using transceiver found at address %0x as default\n",
+			e->name, e->cur_phy);
+	}
+	
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_CONTROL);
+	status = status & ~SGE_MIICTRL_ISOLATE;
+
+	sge_mii_write(e, e->cur_phy, SGE_MIIADDR_CONTROL, status);
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+
+	return status;
+}
+
+/*===========================================================================*
+ *                             sge_reset_phy                                 *
+ *===========================================================================*/
+static uint16_t sge_reset_phy(e, addr)
+sge_t *e;
+uint32_t addr;
+{
+	int i = 0;
+	u16_t status;
+
+	status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
+	status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
+
+	sge_mii_write(e, addr, SGE_MIIADDR_CONTROL,
+		(SGE_MIICTRL_RESET | SGE_MIICTRL_AUTO | SGE_MIICTRL_RST_AUTO));
+
+	return status;
+}
+
+/*===========================================================================*
+ *                              sge_phymode                                 *
+ *===========================================================================*/
+static void sge_phymode(e)
+sge_t *e;
+{
+	u32_t status;
+	u16_t anadv;
+	u16_t anrec;
+	u16_t anexp;
+	u16_t gadv;
+	u16_t grec;
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+	
+	if (!(status & SGE_MIISTATUS_LINK))
+		return;
+
+	anadv = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_ADV);
+	anrec = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_LPAR);
+	anexp = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_EXT);
+	
+	e->link_speed = SGE_SPEED_10;
+	e->duplex_mode = SGE_DUPLEX_OFF;
+	
+	if((e->model == SGE_DEV_0191) && (anrec & SGE_MIIAUTON_NP)
+		&& (anexp & 0x2))
+	{
+		gadv = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_GADV);
+		grec = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_GLPAR);
+		status = (gadv & (grec >> 2));
+		if(status & 0x200)
+		{
+			e->link_speed = SGE_SPEED_1000;
+			e->duplex_mode = SGE_DUPLEX_ON;
+		}
+		else if (status & 0x100)
+		{
+			e->link_speed = SGE_SPEED_1000;
+			e->duplex_mode = SGE_DUPLEX_OFF;
+		}
+	}
+	else
+	{
+		status = anadv & anrec;
+		
+		if (status & (SGE_MIIAUTON_TX | SGE_MIIAUTON_TX_FULL))
+			e->link_speed = SGE_SPEED_100;
+		if (status & (SGE_MIIAUTON_TX_FULL | SGE_MIIAUTON_T_FULL))
+			e->duplex_mode = SGE_DUPLEX_ON;
+	}
+}
+
+/*===========================================================================*
+ *                              sge_macmode                                  *
+ *===========================================================================*/
+static void sge_macmode(e)
+sge_t *e;
+{
+	u32_t status;
+	
+	status = sge_reg_read(e, SGE_REG_STATIONCONTROL);
+	status = status & ~(0x0f000000 | SGE_REGSC_FDX | SGE_REGSC_SPEED_MASK);
+	
+	switch (e->link_speed)
+	{
+		case SGE_SPEED_1000:
+			status |= (SGE_REGSC_SPEED_1000 | (0x3 << 24) | (0x1 << 26));
+			break;
+		case SGE_SPEED_100:
+			status |= (SGE_REGSC_SPEED_100 | (0x1 << 26));
+			break;
+		case SGE_SPEED_10:
+			status |= (SGE_REGSC_SPEED_10 | (0x1 << 26));
+			break;
+		default:
+			printf("%s: Unsupported link speed.\n", e->name);
+	}
+	
+	if (e->duplex_mode)
+	{
+		status = status | SGE_REGSC_FDX;
+	}
+	
+	if(e->RGMII)
+	{
+		status = status | (0x3 << 24);
+	}
+	
+	sge_reg_write(e, SGE_REG_STATIONCONTROL, status);
 }
 
 /*===========================================================================*
@@ -758,8 +1057,18 @@ message *m;
 		    e->address.ea_addr[2], e->address.ea_addr[3],
 		    e->address.ea_addr[4], e->address.ea_addr[5]);
 
+	/* Link speed */
+	printf("%s: Media Link On %d Mbps %s-duplex \n",
+	       e->name,
+	       e->link_speed,
+	       e->duplex_mode ? "full" : "half");
+	
+	/* PHY Transceiver */       
+	printf("%s: Transceiver (%0x/%0x) found at address %d\n", e->name,
+		e->mii->id0, (e->mii->id1 & 0xFFF0), e->mii->addr);
+	
 	/* Mac Registers (Memory Mapped)*/
-	printf("Show Mac Registers\n");
+	printf("MAC Registers\n");
 	for(i = 0; i < 0x80; i+=4)
 	{
 		if((i%16) == 0)
@@ -773,15 +1082,30 @@ message *m;
 	printf("\n");
 	
 	/* EEPROM */
-	printf("EEPROM data\n");
+	printf("EEPROM\n");
 	for(i = 0; i < 0x10; i+=1)
 	{
-		if(i%0x7 == 0)
+		if(i%0x8 == 0)
 			printf("%2.2xh: ", (char)i);
 		
 		printf("%4.4x ", read_eeprom(e, i));
 		
-		if(i == 0x6)
+		if(i == 0x7)
 			printf("\n");
 	}
+	printf("\n");
+	
+	/* EEPROM */
+	printf("PHY Registers\n");
+	for(i = 0; i < 0x20; i+=1)
+	{
+		if((i%8) == 0 )
+			printf("%2.2xh: ", (char)i);
+
+		printf("%4.4x ", sge_mii_read(e, e->cur_phy, i));
+
+		if((i%8)==7)
+			printf("\n");
+	}
+	printf("\n");
 }
