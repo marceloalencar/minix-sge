@@ -640,10 +640,10 @@ message *mp;
 			sge_reg_write(e, SGE_REG_INTRSTATUS, status);
 			if (status & (SGE_INTR_TX_DONE | SGE_INTR_TX_IDLE))
 				/* Tx interrupt */
-				printf("%s: TX interrupt issued !!\n", e->name);
+				sge_writev_s(&e->tx_message, TRUE);
 			if (status & (SGE_INTR_RX_DONE | SGE_INTR_RX_IDLE))
 				/* Rx interrupt */
-				printf("%s: RX interrupt issued !!\n", e->name);
+				sge_readv_s(&e->rx_message, TRUE);
 			if (status & SGE_INTR_LINK)
 				printf("%s: Link changed interrupt issued !!\n", e->name);
 		} while (1);
@@ -1172,7 +1172,7 @@ message *m;
 		e->mii->id0, (e->mii->id1 & 0xFFF0), e->mii->addr);
 	
 	/* Mac Registers (Memory Mapped)*/
-	printf("MAC Registers\n");
+	printf("MAC Registers:\n");
 	for(i = 0; i < 0x80; i+=4)
 	{
 		if((i%16) == 0)
@@ -1186,7 +1186,7 @@ message *m;
 	printf("\n");
 	
 	/* EEPROM */
-	printf("EEPROM\n");
+	printf("EEPROM Dump:\n");
 	for(i = 0; i < 0x10; i+=1)
 	{
 		if(i%0x8 == 0)
@@ -1200,7 +1200,7 @@ message *m;
 	printf("\n");
 	
 	/* EEPROM */
-	printf("PHY Registers\n");
+	printf("PHY Registers:\n");
 	for(i = 0; i < 0x20; i+=1)
 	{
 		if((i%8) == 0 )

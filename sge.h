@@ -216,6 +216,8 @@ typedef struct sge
     int tx_buffer_size;
 
 	int client;
+	message rx_message;
+    message tx_message;
 	size_t rx_size;
 	
 	int RGMII;
