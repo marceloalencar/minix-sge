@@ -365,13 +365,13 @@ sge_t *e;
 		w = (uint8_t) e->address.ea_addr[i];
 		sge_reg_write(e, SGE_REG_RXMACADDR + i, w);
 	}
-	/* Enable filter */
-	filter = filter & ~0x100;
-	sge_reg_write(e, SGE_REG_RXMACCONTROL, filter);
+	/* Enable filter = */
+	filter &= ~(SGE_RXCTRL_BCAST | SGE_RXCTRL_ALLPHYS | SGE_RXCTRL_MCAST);
+	filter |= SGE_RXCTRL_MYPHYS | SGE_RXCTRL_BCAST;
 
-	/*
-	set_rx_mode(net_dev);
-	*/
+	sge_reg_write(e, SGE_REG_RXMACCONTROL, filter);
+	sge_reg_write(e, SGE_REG_RXHASHTABLE, 0xffffffff);
+	sge_reg_write(e, SGE_REG_RXHASHTABLE2, 0xffffffff);
 
 	/* Enable interrupts */
 	sge_reg_write(e, SGE_REG_INTRMASK, SGE_INTRS);
@@ -1093,8 +1093,7 @@ sge_t *e;
 	int r;
 
 	/* Only reply to client for read/write request. */
-	if (!(e->status & SGE_READING ||
-		e->status & SGE_WRITING))
+	if (!(e->status & SGE_READING || e->status & SGE_WRITING))
 	{
 		return;
     }
