@@ -474,12 +474,14 @@ sge_t *e;
 		    panic("%s: Failed to allocate RX buffers.\n", e->name);
 		}
 
+		e->cur_rx = 0;
+
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_RXDESC_NR; i++)
 		{
 			e->rx_desc[i].buffer = rx_buff_p + (i * SGE_BUF_SIZE);
 			e->rx_desc[i].StsSize = 0;
-			e->rx_desc[i].PktInfo = 0;
+			e->rx_desc[i].PktInfo = 0xc0000000;
 		    if(i == (SGE_RXDESC_NR - 1))
 				e->rx_desc[i].EOD = 0x80000000;
 			else
@@ -505,6 +507,8 @@ sge_t *e;
 		{
 		    panic("%s: Failed to allocate TX buffers.\n", e->name);
 		}
+
+		e->cur_tx = 0;
 
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_TXDESC_NR; i++)
@@ -586,7 +590,85 @@ static void sge_writev_s(mp, from_int)
 message *mp;
 int from_int;
 {
-	
+	sge_t *e = &sge_state;
+	sge_tx_desc_t *desc;
+	iovec_s_t iovec[SGE_IOVEC_NR];
+    int r, i, bytes = 0, size;
+    uint32_t command;
+    uint32_t current;
+    uint32_t status;
+
+    /* Are we called from the interrupt handler? */
+    if (!from_int)
+    {
+		if (!(e->autoneg_done))
+		{
+			return;
+		}
+
+		/* Copy write message. */
+		e->tx_message = *mp;
+		e->client = mp->m_source;
+		e->status |= SGE_WRITING;
+
+		/*
+		 * Copy the I/O vector table.
+		 */
+		if ((r = sys_safecopyfrom(e->tx_message.m_source,
+			e->tx_message.m_net_netdrv_dl_writev_s.grant, 0,
+			(vir_bytes) iovec,
+			e->tx_message.m_net_netdrv_dl_writev_s.count *
+			sizeof(iovec_s_t))) != OK)
+		{
+		    panic("sys_safecopyfrom() failed: %d", r);
+		}
+
+		current = e->cur_tx % SGE_TXDESC_NR;
+		desc = &e->tx_desc[current];
+
+		/* Loop vector elements. */
+		for (i = 0; i < e->tx_message.m_net_netdrv_dl_writev_s.count; i++)
+		{
+		    size = iovec[i].iov_size < (SGE_BUF_SIZE - bytes) ?
+				iovec[i].iov_size : (SGE_BUF_SIZE - bytes);
+
+			/* Copy bytes to TX queue buffers. */
+			if ((r = sys_safecopyfrom(e->tx_message.m_source,
+				iovec[i].iov_grant, 0,
+				(vir_bytes) e->tx_buffer +
+				(current * SGE_BUF_SIZE),
+				size)) != OK)
+		    {
+				panic("sys_safecopyfrom() failed: %d", r);
+		    }
+		    /* Mark this descriptor ready. */
+		    desc->PktSize = size & 0xffff;
+		    desc->EOD |= size & 0xffff;
+		    desc->cmdsts = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
+				SGE_TXSTATUS_DEFEN | SGE_TXSTATUS_THOL3 | SGE_TXSTATUS_TXINT);
+			if (e->duplex_mode == 0)
+			{
+				desc->cmdsts |= (SGE_TXSTATUS_COLSEN | SGE_TXSTATUS_CRSEN |
+					SGE_TXSTATUS_BKFEN);
+				if (e->link_speed == SGE_SPEED_1000)
+					desc->cmdsts |= (SGE_TXSTATUS_EXTEN | SGE_TXSTATUS_BSTEN);
+			}
+
+			/* Move to next descriptor. */
+			current = (current + 1) % SGE_TXDESC_NR;
+			desc = &e->tx_desc[current];
+		    bytes +=  size;
+		}
+		/* Increment tail. Start transmission. */
+		e->cur_tx = current;
+		command = sge_reg_read(e, SGE_REG_TX_CTL);
+		sge_reg_write(e, SGE_REG_TX_CTL, 0x10 | command);
+	}
+	else
+	{
+		e->status |= SGE_TRANSMIT;
+	}
+    reply(e);
 }
 
 /*===========================================================================*
@@ -596,7 +678,76 @@ static void sge_readv_s(mp, from_int)
 message *mp;
 int from_int;
 {
+	sge_t *e = &sge_state;
+	sge_rx_desc_t *desc;
+	iovec_s_t iovec[SGE_IOVEC_NR];
+    int r, i, bytes = 0, size;
+    uint32_t command;
+    uint32_t current;
+    uint32_t status;
+    uint32_t pkt_size;
+
+    /* Are we called from the interrupt handler? */
+    if (!from_int)
+    {
+		/* Copy read message. */
+		e->rx_message = *mp;
+		e->client = mp->m_source;
+		e->status |= SGE_READING;
+		e->rx_size = 0;
+	}
+
+	if (e->status == SGE_READING)
+	{
+		/*
+		 * Copy the I/O vector table.
+		 */
+		if ((r = sys_safecopyfrom(e->rx_message.m_source,
+			e->rx_message.m_net_netdrv_dl_readv_s.grant, 0,
+			(vir_bytes) iovec,
+			e->rx_message.m_net_netdrv_dl_readv_s.count *
+			sizeof(iovec_s_t))) != OK)
+		{
+		    panic("sys_safecopyfrom() failed: %d", r);
+		}
 	
+		current = e->cur_rx % SGE_RXDESC_NR;
+		desc = &e->rx_desc[current];
+		pkt_size = desc->StsSize & 0xffff;
+
+		/* Copy to vector elements. */
+		for (i = 0; i < e->rx_message.m_net_netdrv_dl_readv_s.count &&
+			bytes < pkt_size; i++)
+		{
+		    size = iovec[i].iov_size < (pkt_size - bytes) ?
+				iovec[i].iov_size : (pkt_size - bytes);
+
+			if ((r = sys_safecopyto(e->rx_message.m_source, iovec[i].iov_grant,
+				0, (vir_bytes) e->rx_buffer + bytes +
+				(current * SGE_BUF_SIZE),
+				size)) != OK)
+		    {
+				panic("sys_safecopyto() failed: %d", r);
+		    }
+		    bytes += size;
+
+			desc->StsSize = 0;
+			desc->PktInfo = SGE_RXINFO_RXOWN | SGE_RXINFO_RXINT;
+
+			/* Move to next descriptor. */
+			current = (current + 1) % SGE_RXDESC_NR;
+			desc = &e->rx_desc[current];
+		    bytes += size;
+		}
+		/* Update current and reenable. */
+		e->cur_rx = current;
+		command = sge_reg_read(e, SGE_REG_RX_CTL);
+		sge_reg_write(e, SGE_REG_RX_CTL, 0x10 | command);
+
+		e->rx_size = bytes;
+		e->status |= SGE_RECEIVED;
+	}
+    reply(e);
 }
 
 /*===========================================================================*
@@ -605,7 +756,7 @@ int from_int;
 static void sge_getstat_s(mp)
 message *mp;
 {
-	
+	printf("sge: getstat_s() not implemented!\n");
 }
 
 /*===========================================================================*
@@ -630,23 +781,20 @@ message *mp;
 		sge_reg_write(e, SGE_REG_INTRMASK, 0);
 
 		/* Read the Interrupt Cause Read register. */
-		do
+		if ((status & SGE_INTRS) == 0)
 		{
-			if ((status & SGE_INTRS) == 0)
-			{
-				/* Nothing */
-				break;
-			}
-			sge_reg_write(e, SGE_REG_INTRSTATUS, status);
-			if (status & (SGE_INTR_TX_DONE | SGE_INTR_TX_IDLE))
-				/* Tx interrupt */
-				sge_writev_s(&e->tx_message, TRUE);
-			if (status & (SGE_INTR_RX_DONE | SGE_INTR_RX_IDLE))
-				/* Rx interrupt */
-				sge_readv_s(&e->rx_message, TRUE);
-			if (status & SGE_INTR_LINK)
-				printf("%s: Link changed interrupt issued !!\n", e->name);
-		} while (1);
+			/* Nothing */
+			return;
+		}
+		sge_reg_write(e, SGE_REG_INTRSTATUS, status);
+		if (status & (SGE_INTR_TX_DONE | SGE_INTR_TX_IDLE))
+			/* Tx interrupt */
+			sge_writev_s(&e->tx_message, TRUE);
+		if (status & (SGE_INTR_RX_DONE | SGE_INTR_RX_IDLE))
+			/* Rx interrupt */
+			sge_readv_s(&e->rx_message, TRUE);
+		if (status & SGE_INTR_LINK)
+			printf("%s: Link changed.\n", e->name);
 	}
 	
 	/* Re-enable interrupts. */
@@ -907,7 +1055,6 @@ sge_t *e;
 	{
 		sge_phymode(e);
 		sge_macmode(e);
-		
 	}
 
 	if (e->mii->status & SGE_MIISTATUS_LINK)
@@ -958,8 +1105,6 @@ sge_t *e;
 	{
 		e->mii = default_phy;
 		e->cur_phy = default_phy->addr;
-		printf("%s: Using transceiver found at address %0x as default\n",
-			e->name, e->cur_phy);
 	}
 	
 	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_CONTROL);
@@ -1042,6 +1187,8 @@ sge_t *e;
 		if (status & (SGE_MIIAUTON_TX_FULL | SGE_MIIAUTON_T_FULL))
 			e->duplex_mode = SGE_DUPLEX_ON;
 	}
+
+	e->autoneg_done = 1;
 }
 
 /*===========================================================================*
