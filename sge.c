@@ -239,8 +239,6 @@ static int sge_probe(sge_t *e, int skip)
 	/* Loop devices on the PCI bus. */
 	while (skip--)
 	{
-		printf("%s: probe() devind %d vid 0x%x did 0x%x\n",
-				e->name, devind, vid, did);
 		if (!(r = pci_next_dev(&devind, &vid, &did)))
 		{
 			return FALSE;
@@ -448,6 +446,7 @@ sge_t *e;
 static void sge_init_buf(e)
 sge_t *e;
 {
+	/* This function initializes the TX/RX rings, used for DMA transfers */
 	int i;
 	phys_bytes rx_buff_p;
     phys_bytes tx_buff_p;
@@ -458,6 +457,7 @@ sge_t *e;
     if (!e->rx_desc)
     {
 	    /* Allocate RX descriptors. */
+	    /* rx_desc is the RX ring space. rx_desc_p is a pointer to it. */
 	    if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
 			&e->rx_desc_p)) == NULL)
 		{
@@ -479,19 +479,28 @@ sge_t *e;
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_RXDESC_NR; i++)
 		{
-			e->rx_desc[i].buffer = rx_buff_p + (i * SGE_BUF_SIZE);
-			e->rx_desc[i].StsSize = 0;
-			e->rx_desc[i].PktInfo = 0xc0000000;
-		    if(i == (SGE_RXDESC_NR - 1))
-				e->rx_desc[i].EOD = 0x80000000;
+			e->tx_desc[i].pkt_size = 0;
+			/* RX descriptors are initially held by hardware */
+		    e->tx_desc[i].status = SGE_RXINFO_RXOWN | SGE_RXINFO_RXINT;
+			e->tx_desc[i].buf_ptr = tx_buff_p + (i * SGE_BUF_SIZE);
+			e->tx_desc[i].flags = 0;
+			/* Last descriptor is marked as final */
+			if (i == SGE_RXDESC_NR - 1)
+			{
+				e->rx_desc[i].flags = SGE_DESC_FINAL;
+			}
 			else
-				e->rx_desc[i].EOD = 0;
+			{
+				e->rx_desc[i].flags = 0;
+			}
+			e->tx_desc[i].flags |= (SGE_BUF_SIZE & 0xfff8);
 		}
     }
 
     if (!e->tx_desc)
     {
 	    /* Allocate TX descriptors. */
+	    /* tx_desc is the TX ring space. tx_desc_p is a pointer to it. */
 	    if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
 			&e->tx_desc_p)) == NULL)
 		{
@@ -513,16 +522,16 @@ sge_t *e;
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_TXDESC_NR; i++)
 		{
-		    e->tx_desc[i].buffer = tx_buff_p + (i * SGE_BUF_SIZE);
-		    e->tx_desc[i].PktSize = 0;
-			e->tx_desc[i].cmdsts = 0;
-		    if(i == (SGE_TXDESC_NR - 1))
-				e->tx_desc[i].EOD = 0x80000000;
-			else
-				e->tx_desc[i].EOD = 0;
+		    e->tx_desc[i].pkt_size = 0;
+		    e->tx_desc[i].status = 0;
+			e->tx_desc[i].buf_ptr = 0;
+			e->tx_desc[i].flags = 0;
 		}
+		/* Last descriptor is marked as final */
+		e->tx_desc[SGE_TXDESC_NR - 1].flags = SGE_DESC_FINAL;
 	}
 
+	/* Inform card where the buffer is */
 	sge_reg_write(e, SGE_REG_TX_DESC, tx_buff_p);
 	sge_reg_write(e, SGE_REG_RX_DESC, rx_buff_p);
 }
@@ -597,6 +606,8 @@ int from_int;
     uint32_t command;
     uint32_t current;
     uint32_t status;
+
+	printf("%s: sge_writev_s() from interrupt? %d\n", e->name, from_int ? 1 : 0);
 
     /* Are we called from the interrupt handler? */
     if (!from_int)
@@ -686,6 +697,8 @@ int from_int;
     uint32_t current;
     uint32_t status;
     uint32_t pkt_size;
+
+	printf("%s: sge_readv_s() from interrupt? %d\n", e->name, from_int ? 1 : 0);
 
     /* Are we called from the interrupt handler? */
     if (!from_int)
