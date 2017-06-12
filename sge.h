@@ -220,35 +220,35 @@ typedef struct sge
 	int revision;
 	u8_t *regs;
 	ether_addr_t address;
-	
+
 	struct mii_phy *mii;
 	struct mii_phy *first_mii;
 	uint32_t cur_phy;
-	
+
 	int link_speed;
 	int duplex_mode;
 	int autoneg_done;
 
 	uint32_t cur_rx;
 	uint32_t cur_tx;
-	
-	sge_desc_t *rx_desc;
-    phys_bytes rx_desc_p;
-    int rx_desc_count;
-    char *rx_buffer;
-    int rx_buffer_size;
 
-    sge_desc_t *tx_desc;
-    phys_bytes tx_desc_p;
-    int tx_desc_count;
-    char *tx_buffer;
-    int tx_buffer_size;
+	sge_desc_t *rx_desc;
+	phys_bytes rx_desc_p;
+	int rx_desc_count;
+	char *rx_buffer;
+	int rx_buffer_size;
+
+	sge_desc_t *tx_desc;
+	phys_bytes tx_desc_p;
+	int tx_desc_count;
+	char *tx_buffer;
+	int tx_buffer_size;
 
 	int client;
 	message rx_message;
-    message tx_message;
+	message tx_message;
 	size_t rx_size;
-	
+
 	int RGMII;
 	int MAC_APC;
 }

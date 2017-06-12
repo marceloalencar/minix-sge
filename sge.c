@@ -65,8 +65,8 @@ int main(int argc, char *argv[])
 	/* SEF local startup. */
 	env_setargs(argc, argv);
 	sef_local_startup();
-	
-	
+
+
 	/*
 	 * Enter the main driver loop.
 	 */
@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
 		{
 			panic("netdriver_receive failed: %d", r);
 		}
-		
+
 		if (is_ipc_notify(ipc_status))
 		{
 			switch (_ENDPOINT_P(m.m_source))
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
 		case DL_GETSTAT_S:  sge_getstat_s(&m);          break;
 		case DL_WRITEV_S:   sge_writev_s(&m, FALSE);    break;
 		case DL_READV_S:    sge_readv_s(&m, FALSE);     break;
-	    default:
+		default:
 			panic("illegal message: %d", m.m_type);
 		}
 	}
@@ -322,7 +322,7 @@ sge_t *e;
 
 	e->status = SGE_ENABLED;
 	e->irq_hook = e->irq;
-	
+
 	/*
 	 * Set the interrupt handler and policy. Do not automatically
 	 * re-enable interrupts. Return the IRQ line number on interrupts.
@@ -342,7 +342,7 @@ sge_t *e;
 
 	/* Initialization routine */
 	sge_init_addr(e);
-    sge_init_buf(e);
+	sge_init_buf(e);
 
 	if (sge_mii_probe(e) == 0)
 	{
@@ -393,15 +393,15 @@ sge_t *e;
 	static char eakey[] = SGE_ENVVAR "#_EA";
 	static char eafmt[] = "x:x:x:x:x:x";
 	u16_t val;
-    int i;
-    long v;
+	int i;
+	long v;
 	
 	/*
-     * Do we have a user defined ethernet address?
-     */
-    eakey[sizeof(SGE_ENVVAR)-1] = '0' + sge_instance;
-    
-    for (i = 0; i < 6; i++)
+	 * Do we have a user defined ethernet address?
+	 */
+	eakey[sizeof(SGE_ENVVAR)-1] = '0' + sge_instance;
+
+	for (i = 0; i < 6; i++)
 	{
 		if (env_parse(eakey, eafmt, i, &v, 0x00L, 0xFFL) != EP_SET)
 			break;
@@ -425,8 +425,8 @@ sge_t *e;
 			for (i = 0; i < 3; i++)
 			{
 				val = read_eeprom(e, SGE_EEPADDR_MAC + i);
-			    e->address.ea_addr[(i * 2)]     = (val & 0xff);
-			    e->address.ea_addr[(i * 2) + 1] = (val & 0xff00) >> 8;
+				e->address.ea_addr[(i * 2)] = (val & 0xff);
+				e->address.ea_addr[(i * 2) + 1] = (val & 0xff00) >> 8;
 			}
 			if ((read_eeprom(e, SGE_EEPADDR_INFO) & 0x80) != 0)
 			{
@@ -449,29 +449,29 @@ sge_t *e;
 	/* This function initializes the TX/RX rings, used for DMA transfers */
 	int i;
 	phys_bytes rx_buff_p;
-    phys_bytes tx_buff_p;
+	phys_bytes tx_buff_p;
 
-    e->rx_desc_count = SGE_RXDESC_NR;
-    e->tx_desc_count = SGE_TXDESC_NR;
+	e->rx_desc_count = SGE_RXDESC_NR;
+	e->tx_desc_count = SGE_TXDESC_NR;
 
-    if (!e->rx_desc)
-    {
-	    /* Allocate RX descriptors. */
-	    /* rx_desc is the RX ring space. rx_desc_p is a pointer to it. */
-	    if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
+	if (!e->rx_desc)
+	{
+		/* Allocate RX descriptors. */
+		/* rx_desc is the RX ring space. rx_desc_p is a pointer to it. */
+		if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
 			&e->rx_desc_p)) == NULL)
 		{
 			panic("%s: Failed to allocate RX descriptors.\n", e->name);
 		}
-	    memset(e->rx_desc, 0, SGE_RX_TOTALSIZE + 15);
+		memset(e->rx_desc, 0, SGE_RX_TOTALSIZE + 15);
 
-	    /* Allocate RX buffers */
-	    e->rx_buffer_size = SGE_RXDESC_NR * SGE_BUF_SIZE;
+		/* Allocate RX buffers */
+		e->rx_buffer_size = SGE_RXDESC_NR * SGE_BUF_SIZE;
 
-	    if ((e->rx_buffer = alloc_contig(e->rx_buffer_size,
+		if ((e->rx_buffer = alloc_contig(e->rx_buffer_size,
 			AC_ALIGN4K, &rx_buff_p)) == NULL)
 		{
-		    panic("%s: Failed to allocate RX buffers.\n", e->name);
+			panic("%s: Failed to allocate RX buffers.\n", e->name);
 		}
 
 		e->cur_rx = 0;
@@ -481,7 +481,7 @@ sge_t *e;
 		{
 			e->tx_desc[i].pkt_size = 0;
 			/* RX descriptors are initially held by hardware */
-		    e->tx_desc[i].status = SGE_RXINFO_RXOWN | SGE_RXINFO_RXINT;
+			e->tx_desc[i].status = SGE_RXINFO_RXOWN | SGE_RXINFO_RXINT;
 			e->tx_desc[i].buf_ptr = tx_buff_p + (i * SGE_BUF_SIZE);
 			e->tx_desc[i].flags = 0;
 			/* Last descriptor is marked as final */
@@ -495,13 +495,13 @@ sge_t *e;
 			}
 			e->tx_desc[i].flags |= (SGE_BUF_SIZE & 0xfff8);
 		}
-    }
+	}
 
-    if (!e->tx_desc)
-    {
-	    /* Allocate TX descriptors. */
-	    /* tx_desc is the TX ring space. tx_desc_p is a pointer to it. */
-	    if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
+	if (!e->tx_desc)
+	{
+		/* Allocate TX descriptors. */
+		/* tx_desc is the TX ring space. tx_desc_p is a pointer to it. */
+		if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
 			&e->tx_desc_p)) == NULL)
 		{
 			panic("%s: Failed to allocate TX descriptors.\n", e->name);
@@ -509,12 +509,12 @@ sge_t *e;
 		memset(e->tx_desc, 0, SGE_TX_TOTALSIZE + 15);
 
 		/* Allocate TX buffers */
-	    e->tx_buffer_size = SGE_TXDESC_NR * SGE_BUF_SIZE;
+		e->tx_buffer_size = SGE_TXDESC_NR * SGE_BUF_SIZE;
 
-	    if ((e->tx_buffer = alloc_contig(e->tx_buffer_size,
+		if ((e->tx_buffer = alloc_contig(e->tx_buffer_size,
 			AC_ALIGN4K, &tx_buff_p)) == NULL)
 		{
-		    panic("%s: Failed to allocate TX buffers.\n", e->name);
+			panic("%s: Failed to allocate TX buffers.\n", e->name);
 		}
 
 		e->cur_tx = 0;
@@ -522,8 +522,8 @@ sge_t *e;
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_TXDESC_NR; i++)
 		{
-		    e->tx_desc[i].pkt_size = 0;
-		    e->tx_desc[i].status = 0;
+			e->tx_desc[i].pkt_size = 0;
+			e->tx_desc[i].status = 0;
 			e->tx_desc[i].buf_ptr = 0;
 			e->tx_desc[i].flags = 0;
 		}
@@ -544,10 +544,10 @@ sge_t *e;
 {
 	sge_reg_write(e, SGE_REG_INTRMASK, 0);
 	sge_reg_write(e, SGE_REG_INTRSTATUS, 0xffffffff);
-	
+
 	sge_reg_write(e, SGE_REG_TX_CTL, 0x00001c00);
 	sge_reg_write(e, SGE_REG_RX_CTL, 0x001e1c00);
-	
+
 	sge_reg_write(e, SGE_REG_INTRCONTROL, 0x8000);
 	sge_reg_read(e, SGE_REG_INTRCONTROL);
 	micro_delay(100);
@@ -602,16 +602,16 @@ int from_int;
 	sge_t *e = &sge_state;
 	sge_tx_desc_t *desc;
 	iovec_s_t iovec[SGE_IOVEC_NR];
-    int r, i, bytes = 0, size;
-    uint32_t command;
-    uint32_t current;
-    uint32_t status;
+	int r, i, bytes = 0, size;
+	uint32_t command;
+	uint32_t current;
+	uint32_t status;
 
 	printf("%s: sge_writev_s() from interrupt? %d\n", e->name, from_int ? 1 : 0);
 
-    /* Are we called from the interrupt handler? */
-    if (!from_int)
-    {
+	/* Are we called from the interrupt handler? */
+	if (!from_int)
+	{
 		if (!(e->autoneg_done))
 		{
 			return;
@@ -631,7 +631,7 @@ int from_int;
 			e->tx_message.m_net_netdrv_dl_writev_s.count *
 			sizeof(iovec_s_t))) != OK)
 		{
-		    panic("sys_safecopyfrom() failed: %d", r);
+			panic("sys_safecopyfrom() failed: %d", r);
 		}
 
 		current = e->cur_tx % SGE_TXDESC_NR;
@@ -640,7 +640,7 @@ int from_int;
 		/* Loop vector elements. */
 		for (i = 0; i < e->tx_message.m_net_netdrv_dl_writev_s.count; i++)
 		{
-		    size = iovec[i].iov_size < (SGE_BUF_SIZE - bytes) ?
+			size = iovec[i].iov_size < (SGE_BUF_SIZE - bytes) ?
 				iovec[i].iov_size : (SGE_BUF_SIZE - bytes);
 
 			/* Copy bytes to TX queue buffers. */
@@ -649,13 +649,13 @@ int from_int;
 				(vir_bytes) e->tx_buffer +
 				(current * SGE_BUF_SIZE),
 				size)) != OK)
-		    {
+			{
 				panic("sys_safecopyfrom() failed: %d", r);
-		    }
-		    /* Mark this descriptor ready. */
-		    desc->PktSize = size & 0xffff;
-		    desc->EOD |= size & 0xffff;
-		    desc->cmdsts = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
+			}
+			/* Mark this descriptor ready. */
+			desc->PktSize = size & 0xffff;
+			desc->EOD |= size & 0xffff;
+			desc->cmdsts = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
 				SGE_TXSTATUS_DEFEN | SGE_TXSTATUS_THOL3 | SGE_TXSTATUS_TXINT);
 			if (e->duplex_mode == 0)
 			{
@@ -668,7 +668,7 @@ int from_int;
 			/* Move to next descriptor. */
 			current = (current + 1) % SGE_TXDESC_NR;
 			desc = &e->tx_desc[current];
-		    bytes +=  size;
+			bytes +=  size;
 		}
 		/* Increment tail. Start transmission. */
 		e->cur_tx = current;
@@ -679,7 +679,7 @@ int from_int;
 	{
 		e->status |= SGE_TRANSMIT;
 	}
-    reply(e);
+	reply(e);
 }
 
 /*===========================================================================*
@@ -692,17 +692,17 @@ int from_int;
 	sge_t *e = &sge_state;
 	sge_rx_desc_t *desc;
 	iovec_s_t iovec[SGE_IOVEC_NR];
-    int r, i, bytes = 0, size;
-    uint32_t command;
-    uint32_t current;
-    uint32_t status;
-    uint32_t pkt_size;
+	int r, i, bytes = 0, size;
+	uint32_t command;
+	uint32_t current;
+	uint32_t status;
+	uint32_t pkt_size;
 
 	printf("%s: sge_readv_s() from interrupt? %d\n", e->name, from_int ? 1 : 0);
 
-    /* Are we called from the interrupt handler? */
-    if (!from_int)
-    {
+	/* Are we called from the interrupt handler? */
+	if (!from_int)
+	{
 		/* Copy read message. */
 		e->rx_message = *mp;
 		e->client = mp->m_source;
@@ -721,9 +721,9 @@ int from_int;
 			e->rx_message.m_net_netdrv_dl_readv_s.count *
 			sizeof(iovec_s_t))) != OK)
 		{
-		    panic("sys_safecopyfrom() failed: %d", r);
+			panic("sys_safecopyfrom() failed: %d", r);
 		}
-	
+
 		current = e->cur_rx % SGE_RXDESC_NR;
 		desc = &e->rx_desc[current];
 		pkt_size = desc->StsSize & 0xffff;
@@ -732,17 +732,17 @@ int from_int;
 		for (i = 0; i < e->rx_message.m_net_netdrv_dl_readv_s.count &&
 			bytes < pkt_size; i++)
 		{
-		    size = iovec[i].iov_size < (pkt_size - bytes) ?
+			size = iovec[i].iov_size < (pkt_size - bytes) ?
 				iovec[i].iov_size : (pkt_size - bytes);
 
 			if ((r = sys_safecopyto(e->rx_message.m_source, iovec[i].iov_grant,
 				0, (vir_bytes) e->rx_buffer + bytes +
 				(current * SGE_BUF_SIZE),
 				size)) != OK)
-		    {
+			{
 				panic("sys_safecopyto() failed: %d", r);
-		    }
-		    bytes += size;
+			}
+			bytes += size;
 
 			desc->StsSize = 0;
 			desc->PktInfo = SGE_RXINFO_RXOWN | SGE_RXINFO_RXINT;
@@ -750,7 +750,7 @@ int from_int;
 			/* Move to next descriptor. */
 			current = (current + 1) % SGE_RXDESC_NR;
 			desc = &e->rx_desc[current];
-		    bytes += size;
+			bytes += size;
 		}
 		/* Update current and reenable. */
 		e->cur_rx = current;
@@ -760,7 +760,7 @@ int from_int;
 		e->rx_size = bytes;
 		e->status |= SGE_RECEIVED;
 	}
-    reply(e);
+	reply(e);
 }
 
 /*===========================================================================*
@@ -809,7 +809,7 @@ message *mp;
 		if (status & SGE_INTR_LINK)
 			printf("%s: Link changed.\n", e->name);
 	}
-	
+
 	/* Re-enable interrupts. */
 	sge_reg_write(e, SGE_REG_INTRMASK, SGE_INTRS);
 	if (sys_irqenable(&e->irq_hook) != OK)
@@ -995,16 +995,16 @@ sge_t *e;
 	u32_t addr;
 	u16_t status;
 	u16_t link_status = SGE_MIISTATUS_LINK;
-	
+
 	/* Search for PHY */
 	for (addr = 0; addr < 32; addr++)
 	{
 		status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
 		status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
-		
+
 		if (status == 0xffff || status == 0)
 			continue;
-			
+
 		phy = alloc_contig(sizeof(struct mii_phy), 0, NULL);
 		phy->id0 = sge_mii_read(e, addr, SGE_MIIADDR_PHY_ID0);
 		phy->id1 = sge_mii_read(e, addr, SGE_MIIADDR_PHY_ID1);		
@@ -1015,19 +1015,19 @@ sge_t *e;
 		e->mii = phy;
 		e->first_mii = phy;
 	}
-	
+
 	if (e->mii == NULL)
 	{
 		printf("%s: No transceiver found!\n", e->name);
 		return 0;
 	}
-	
+
 	e->mii = NULL;
-	
+
 	sge_default_phy(e);
 
 	status = sge_reset_phy(e, e->cur_phy);
-	
+
 	if(status & SGE_MIISTATUS_LINK)
 	{
 		int i;
@@ -1041,7 +1041,7 @@ sge_t *e;
 			link_status = link_status ^ (sge_mii_read(e, e->cur_phy,
 				SGE_MIIADDR_STATUS) & link_status);
 		}
-		
+
 		if (i == timeout)
 		{
 			printf("%s: reset phy and link down now\n", e->name);
@@ -1091,7 +1091,7 @@ sge_t *e;
 	struct mii_phy *phy = NULL;
 	struct mii_phy *default_phy = NULL;
 	u16_t status;
-	
+
 	for(phy = e->first_mii; phy; phy = phy->next)
 	{
 		status = sge_mii_read(e, phy->addr, SGE_MIIADDR_STATUS);
@@ -1110,16 +1110,16 @@ sge_t *e;
 				default_phy = phy;
 		 }
 	}
-	
+
 	if (!default_phy)
 		default_phy = e->first_mii;
-	
+
 	if(e->mii != default_phy )
 	{
 		e->mii = default_phy;
 		e->cur_phy = default_phy->addr;
 	}
-	
+
 	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_CONTROL);
 	status = status & ~SGE_MIICTRL_ISOLATE;
 
@@ -1163,17 +1163,17 @@ sge_t *e;
 	u16_t grec;
 	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
 	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
-	
+
 	if (!(status & SGE_MIISTATUS_LINK))
 		return;
 
 	anadv = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_ADV);
 	anrec = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_LPAR);
 	anexp = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_EXT);
-	
+
 	e->link_speed = SGE_SPEED_10;
 	e->duplex_mode = SGE_DUPLEX_OFF;
-	
+
 	if((e->model == SGE_DEV_0191) && (anrec & SGE_MIIAUTON_NP)
 		&& (anexp & 0x2))
 	{
@@ -1194,7 +1194,7 @@ sge_t *e;
 	else
 	{
 		status = anadv & anrec;
-		
+
 		if (status & (SGE_MIIAUTON_TX | SGE_MIIAUTON_TX_FULL))
 			e->link_speed = SGE_SPEED_100;
 		if (status & (SGE_MIIAUTON_TX_FULL | SGE_MIIAUTON_T_FULL))
@@ -1211,10 +1211,10 @@ static void sge_macmode(e)
 sge_t *e;
 {
 	u32_t status;
-	
+
 	status = sge_reg_read(e, SGE_REG_STATIONCONTROL);
 	status = status & ~(0x0f000000 | SGE_REGSC_FDX | SGE_REGSC_SPEED_MASK);
-	
+
 	switch (e->link_speed)
 	{
 		case SGE_SPEED_1000:
@@ -1229,17 +1229,17 @@ sge_t *e;
 		default:
 			printf("%s: Unsupported link speed.\n", e->name);
 	}
-	
+
 	if (e->duplex_mode)
 	{
 		status = status | SGE_REGSC_FDX;
 	}
-	
+
 	if(e->RGMII)
 	{
 		status = status | (0x3 << 24);
 	}
-	
+
 	sge_reg_write(e, SGE_REG_STATIONCONTROL, status);
 }
 
@@ -1256,7 +1256,7 @@ sge_t *e;
 	if (!(e->status & SGE_READING || e->status & SGE_WRITING))
 	{
 		return;
-    }
+	}
 	/* Construct reply message. */
 	msg.m_type   = DL_TASK_REPLY;
 	msg.m_netdrv_net_dl_task.flags = DL_NOFLAGS;
@@ -1271,7 +1271,7 @@ sge_t *e;
 			e->rx_size >= ETH_MIN_PACK_SIZE ?
 				e->rx_size  : ETH_MIN_PACK_SIZE;
 
-	    /* Clear flags. */
+		/* Clear flags. */
 		e->status &= ~(SGE_READING | SGE_RECEIVED);
 	}
 	/* Did we successfully transmit packet(s)? */
@@ -1312,53 +1312,53 @@ message *m;
 {
 	sge_t *e;
 	e = &sge_state;
-	
+
 	long i;
 
 	/* MAC Address */
 	printf("%s: Ethernet Address %x:%x:%x:%x:%x:%x\n", e->name,
-		    e->address.ea_addr[0], e->address.ea_addr[1],
-		    e->address.ea_addr[2], e->address.ea_addr[3],
-		    e->address.ea_addr[4], e->address.ea_addr[5]);
+		e->address.ea_addr[0], e->address.ea_addr[1],
+		e->address.ea_addr[2], e->address.ea_addr[3],
+		e->address.ea_addr[4], e->address.ea_addr[5]);
 
 	/* Link speed */
 	printf("%s: Media Link On %d Mbps %s-duplex \n",
-	       e->name,
-	       e->link_speed,
-	       e->duplex_mode ? "full" : "half");
-	
+		e->name,
+		e->link_speed,
+		e->duplex_mode ? "full" : "half");
+
 	/* PHY Transceiver */       
-	printf("%s: Transceiver (%0x/%0x) found at address %d\n", e->name,
+	printf("%s: PHY Transceiver (%0x/%0x) found at address %d\n", e->name,
 		e->mii->id0, (e->mii->id1 & 0xFFF0), e->mii->addr);
-	
+
 	/* Mac Registers (Memory Mapped)*/
 	printf("MAC Registers:\n");
 	for(i = 0; i < 0x80; i+=4)
 	{
 		if((i%16) == 0)
 			printf("%2.2xh: ", (char)i);
-		
+
 		printf("%8.8x ", sge_reg_read(e, i));
-		
+
 		if((i%16) == 12)
 			printf("\n");
 	}
 	printf("\n");
-	
+
 	/* EEPROM */
 	printf("EEPROM Dump:\n");
 	for(i = 0; i < 0x10; i+=1)
 	{
 		if(i%0x8 == 0)
 			printf("%2.2xh: ", (char)i);
-		
+
 		printf("%4.4x ", read_eeprom(e, i));
-		
+
 		if(i == 0x7)
 			printf("\n");
 	}
 	printf("\n");
-	
+
 	/* EEPROM */
 	printf("PHY Registers:\n");
 	for(i = 0; i < 0x20; i+=1)
