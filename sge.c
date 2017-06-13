@@ -479,11 +479,11 @@ sge_t *e;
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_RXDESC_NR; i++)
 		{
-			e->tx_desc[i].pkt_size = 0;
+			e->rx_desc[i].pkt_size = 0;
 			/* RX descriptors are initially held by hardware */
-			e->tx_desc[i].status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
-			e->tx_desc[i].buf_ptr = tx_buff_p + (i * SGE_BUF_SIZE);
-			e->tx_desc[i].flags = 0;
+			e->rx_desc[i].status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
+			e->rx_desc[i].buf_ptr = rx_buff_p + (i * SGE_BUF_SIZE);
+			e->rx_desc[i].flags = 0;
 			/* Last descriptor is marked as final */
 			if (i == SGE_RXDESC_NR - 1)
 			{
@@ -493,7 +493,7 @@ sge_t *e;
 			{
 				e->rx_desc[i].flags = 0;
 			}
-			e->tx_desc[i].flags |= (SGE_BUF_SIZE & 0xfff8);
+			e->rx_desc[i].flags |= (SGE_BUF_SIZE & 0xfff8);
 		}
 	}
 
