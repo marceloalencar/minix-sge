@@ -481,7 +481,7 @@ sge_t *e;
 		{
 			e->tx_desc[i].pkt_size = 0;
 			/* RX descriptors are initially held by hardware */
-			e->tx_desc[i].status = SGE_RXINFO_RXOWN | SGE_RXINFO_RXINT;
+			e->tx_desc[i].status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
 			e->tx_desc[i].buf_ptr = tx_buff_p + (i * SGE_BUF_SIZE);
 			e->tx_desc[i].flags = 0;
 			/* Last descriptor is marked as final */
@@ -531,6 +531,8 @@ sge_t *e;
 		e->tx_desc[SGE_TXDESC_NR - 1].flags = SGE_DESC_FINAL;
 	}
 
+	e->tx_buffer_p = tx_buff_p;
+	e->rx_buffer_p = rx_buff_p;
 	/* Inform card where the buffer is */
 	sge_reg_write(e, SGE_REG_TX_DESC, tx_buff_p);
 	sge_reg_write(e, SGE_REG_RX_DESC, rx_buff_p);
@@ -600,7 +602,7 @@ message *mp;
 int from_int;
 {
 	sge_t *e = &sge_state;
-	sge_tx_desc_t *desc;
+	sge_desc_t *desc;
 	iovec_s_t iovec[SGE_IOVEC_NR];
 	int r, i, bytes = 0, size;
 	uint32_t command;
@@ -647,23 +649,24 @@ int from_int;
 			if ((r = sys_safecopyfrom(e->tx_message.m_source,
 				iovec[i].iov_grant, 0,
 				(vir_bytes) e->tx_buffer +
-				(current * SGE_BUF_SIZE),
-				size)) != OK)
+				(current * SGE_BUF_SIZE), size)) != OK)
 			{
 				panic("sys_safecopyfrom() failed: %d", r);
 			}
 			/* Mark this descriptor ready. */
-			desc->PktSize = size & 0xffff;
-			desc->EOD |= size & 0xffff;
-			desc->cmdsts = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
+			desc->pkt_size = size & 0xffff;
+			desc->status = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
 				SGE_TXSTATUS_DEFEN | SGE_TXSTATUS_THOL3 | SGE_TXSTATUS_TXINT);
+			desc->buf_ptr = e->tx_buffer_p + (current * SGE_BUF_SIZE);
+			desc->flags |= size & 0xffff;
 			if (e->duplex_mode == 0)
 			{
-				desc->cmdsts |= (SGE_TXSTATUS_COLSEN | SGE_TXSTATUS_CRSEN |
+				desc->status |= (SGE_TXSTATUS_COLSEN | SGE_TXSTATUS_CRSEN |
 					SGE_TXSTATUS_BKFEN);
 				if (e->link_speed == SGE_SPEED_1000)
-					desc->cmdsts |= (SGE_TXSTATUS_EXTEN | SGE_TXSTATUS_BSTEN);
+					desc->status |= (SGE_TXSTATUS_EXTEN | SGE_TXSTATUS_BSTEN);
 			}
+			desc->status |= SGE_TXSTATUS_TXOWN;
 
 			/* Move to next descriptor. */
 			current = (current + 1) % SGE_TXDESC_NR;
@@ -690,7 +693,7 @@ message *mp;
 int from_int;
 {
 	sge_t *e = &sge_state;
-	sge_rx_desc_t *desc;
+	sge_desc_t *desc;
 	iovec_s_t iovec[SGE_IOVEC_NR];
 	int r, i, bytes = 0, size;
 	uint32_t command;
@@ -726,7 +729,7 @@ int from_int;
 
 		current = e->cur_rx % SGE_RXDESC_NR;
 		desc = &e->rx_desc[current];
-		pkt_size = desc->StsSize & 0xffff;
+		pkt_size = desc->pkt_size & 0xffff;
 
 		/* Copy to vector elements. */
 		for (i = 0; i < e->rx_message.m_net_netdrv_dl_readv_s.count &&
@@ -737,15 +740,15 @@ int from_int;
 
 			if ((r = sys_safecopyto(e->rx_message.m_source, iovec[i].iov_grant,
 				0, (vir_bytes) e->rx_buffer + bytes +
-				(current * SGE_BUF_SIZE),
-				size)) != OK)
+				(current * SGE_BUF_SIZE), size)) != OK)
 			{
 				panic("sys_safecopyto() failed: %d", r);
 			}
 			bytes += size;
 
-			desc->StsSize = 0;
-			desc->PktInfo = SGE_RXINFO_RXOWN | SGE_RXINFO_RXINT;
+			/* Flip ownership back to the card */
+			desc->pkt_size = 0;
+			desc->status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
 
 			/* Move to next descriptor. */
 			current = (current + 1) % SGE_RXDESC_NR;

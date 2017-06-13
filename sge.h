@@ -117,6 +117,9 @@
 #define SGE_TXSTATUS_CRCEN		0x00020000
 #define SGE_TXSTATUS_PADEN		0x00010000
 
+#define SGE_RXSTATUS_RXOWN		0x80000000
+#define SGE_RXSTATUS_TAGON		0x80000000
+#define SGE_RXSTATUS_RXINT		0x40000000
 #define SGE_RXSTATUS_CRCOK		0x00010000
 #define SGE_RXSTATUS_COLON		0x00020000
 #define SGE_RXSTATUS_NIBON		0x00040000
@@ -124,10 +127,6 @@
 #define SGE_RXSTATUS_LIMIT		0x00200000
 #define SGE_RXSTATUS_SHORT		0x00400000
 #define SGE_RXSTATUS_ABORT		0x00800000
-#define SGE_RXSTATUS_TAGON		0x80000000
-
-#define SGE_RXINFO_RXOWN		0x80000000
-#define SGE_RXINFO_RXINT		0x40000000
 
 /* Interrupts */
 #define	SGE_INTR_SOFT		0x40000000
@@ -236,12 +235,14 @@ typedef struct sge
 	phys_bytes rx_desc_p;
 	int rx_desc_count;
 	char *rx_buffer;
+	phys_bytes rx_buffer_p;
 	int rx_buffer_size;
 
 	sge_desc_t *tx_desc;
 	phys_bytes tx_desc_p;
 	int tx_desc_count;
 	char *tx_buffer;
+	phys_bytes tx_buffer_p;
 	int tx_buffer_size;
 
 	int client;
