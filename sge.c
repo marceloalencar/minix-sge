@@ -772,7 +772,30 @@ int from_int;
 static void sge_getstat_s(mp)
 message *mp;
 {
-	printf("sge: getstat_s() not implemented!\n");
+	int r;
+	eth_stat_t stats;
+
+	stats.ets_recvErr   = 0;
+	stats.ets_sendErr   = 0;
+	stats.ets_OVW       = 0;
+	stats.ets_CRCerr    = 0;
+	stats.ets_frameAll  = 0;
+	stats.ets_missedP   = 0;
+	stats.ets_packetR   = 0;
+	stats.ets_packetT   = 0;
+	stats.ets_collision = 0;
+	stats.ets_transAb   = 0;
+	stats.ets_carrSense = 0;
+	stats.ets_fifoUnder = 0;
+	stats.ets_fifoOver  = 0;
+	stats.ets_CDheartbeat = 0;
+	stats.ets_OWC = 0;
+
+	sys_safecopyto(mp->m_source, mp->m_net_netdrv_dl_getstat_s.grant, 0,
+		(vir_bytes)&stats, sizeof(stats));
+	mp->m_type  = DL_STAT_REPLY;
+	if((r=ipc_send(mp->m_source, mp)) != OK)
+		panic("sge_getstat: ipc_send() failed: %d", r);
 }
 
 /*===========================================================================*
