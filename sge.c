@@ -186,11 +186,11 @@ static void sge_init(message *mp)
 
 	e->flags &= ~(SGE_PROMISC | SGE_MULTICAST | SGE_BROADCAST);
 	if (mp->m_net_netdrv_dl_conf.mode & DL_PROMISC_REQ)
-		ec->flags |= SGE_PROMISC | SGE_MULTICAST | SGE_BROADCAST;
+		e->flags |= SGE_PROMISC | SGE_MULTICAST | SGE_BROADCAST;
 	if (mp->m_net_netdrv_dl_conf.mode & DL_MULTI_REQ)
-		ec->flags |= SGE_MULTICAST;
+		e->flags |= SGE_MULTICAST;
 	if (mp->m_net_netdrv_dl_conf.mode & DL_BROAD_REQ)
-		ec->flags |= SGE_BROADCAST;
+		e->flags |= SGE_BROADCAST;
 
 	/* Initialize hardware, if needed. */
 	if (!(e->status & SGE_ENABLED) && !(sge_init_hw(e)))
@@ -693,7 +693,7 @@ int from_int;
 			/* Move to next descriptor. */
 			current = (current + 1) % SGE_TXDESC_NR;
 			desc = &e->tx_desc[current];
-			bytes +=  size;
+			bytes += size;
 		}
 		/* Increment tail. Start transmission. */
 		e->cur_tx = current;
@@ -735,7 +735,7 @@ int from_int;
 		e->rx_size = 0;
 	}
 
-	if (e->status == SGE_READING)
+	if (e->status & SGE_READING)
 	{
 		/*
 		 * Copy the I/O vector table.
@@ -1311,8 +1311,7 @@ sge_t *e;
 	msg.m_netdrv_net_dl_task.count = 0;
 
 	/* Did we successfully receive packet(s)? */
-	if (e->status & SGE_READING &&
-	e->status & SGE_RECEIVED)
+	if (e->status & SGE_READING && e->status & SGE_RECEIVED)
 	{
 		msg.m_netdrv_net_dl_task.flags |= DL_PACK_RECV;
 		msg.m_netdrv_net_dl_task.count =
@@ -1323,8 +1322,7 @@ sge_t *e;
 		e->status &= ~(SGE_READING | SGE_RECEIVED);
 	}
 	/* Did we successfully transmit packet(s)? */
-	if (e->status & SGE_TRANSMIT &&
-		e->status & SGE_WRITING)
+	if (e->status & SGE_TRANSMIT && e->status & SGE_WRITING)
 	{
 		msg.m_netdrv_net_dl_task.flags |= DL_PACK_SEND;
 		
@@ -1360,23 +1358,34 @@ message *m;
 {
 	sge_t *e;
 	e = &sge_state;
-
 	long i;
+	char *dname;
+
+	switch (e->model)
+	{
+		case SGE_DEV_0190:
+			dname = "SiS 190 PCI Fast Ethernet Adapter";
+			break;
+		case SGE_DEV_0191:
+			dname = "SiS 191 PCI Gigabit Ethernet Adapter";
+			break;
+	}
+
+	printf("%s is a %s\n", e->name, dname);
 
 	/* MAC Address */
-	printf("%s: Ethernet Address %x:%x:%x:%x:%x:%x\n", e->name,
+	printf("Ethernet Address %x:%x:%x:%x:%x:%x\n",
 		e->address.ea_addr[0], e->address.ea_addr[1],
 		e->address.ea_addr[2], e->address.ea_addr[3],
 		e->address.ea_addr[4], e->address.ea_addr[5]);
 
 	/* Link speed */
-	printf("%s: Media Link On %d Mbps %s-duplex \n",
-		e->name,
+	printf("Media Link On %d Mbps %s-duplex \n",
 		e->link_speed,
 		e->duplex_mode ? "full" : "half");
 
 	/* PHY Transceiver */       
-	printf("%s: PHY Transceiver (%0x/%0x) found at address %d\n", e->name,
+	printf("PHY Transceiver (%0x/%0x) found at address %d\n",
 		e->mii->id0, (e->mii->id1 & 0xFFF0), e->mii->addr);
 
 	/* Mac Registers (Memory Mapped)*/
