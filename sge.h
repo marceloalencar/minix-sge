@@ -22,13 +22,18 @@
 #define SGE_DEV_0190	0x0190 /* SiS 190 PCI Fast Ethernet Adapter */
 #define SGE_DEV_0191	0x0191 /* SiS 191 PCI Gigabit Ethernet Adapter */
 
-/* Ethernet driver states */
-#define SGE_DETECTED	(1 << 0)
-#define SGE_ENABLED	(1 << 1)
-#define SGE_READING	(1 << 2)
-#define SGE_WRITING	(1 << 3)
-#define SGE_RECEIVED	(1 << 4)
-#define SGE_TRANSMIT	(1 << 5)
+/* Ethernet driver statuses */
+#define SGE_DETECTED		(1 << 0)
+#define SGE_ENABLED		(1 << 1)
+#define SGE_READING		(1 << 2)
+#define SGE_WRITING		(1 << 3)
+#define SGE_RECEIVED		(1 << 4)
+#define SGE_TRANSMIT		(1 << 5)
+
+/* Ethernet driver modes */
+#define SGE_PROMISC		(1 << 0)
+#define SGE_MULTICAST		(1 << 1)
+#define SGE_BROADCAST		(1 << 2)
 
 /* Speed/Duplex */
 #define SGE_SPEED_10		10
@@ -214,6 +219,7 @@ typedef struct sge
 	char name[8];
 	int model;
 	int status;
+	int flags;
 	int irq;
 	int irq_hook;
 	int revision;

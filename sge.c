@@ -184,6 +184,14 @@ static void sge_init(message *mp)
 	}
 	e = &sge_state;
 
+	e->flags &= ~(SGE_PROMISC | SGE_MULTICAST | SGE_BROADCAST);
+	if (mp->m_net_netdrv_dl_conf.mode & DL_PROMISC_REQ)
+		ec->flags |= SGE_PROMISC | SGE_MULTICAST | SGE_BROADCAST;
+	if (mp->m_net_netdrv_dl_conf.mode & DL_MULTI_REQ)
+		ec->flags |= SGE_MULTICAST;
+	if (mp->m_net_netdrv_dl_conf.mode & DL_BROAD_REQ)
+		ec->flags |= SGE_BROADCAST;
+
 	/* Initialize hardware, if needed. */
 	if (!(e->status & SGE_ENABLED) && !(sge_init_hw(e)))
 	{
@@ -353,8 +361,10 @@ sge_t *e;
 
 	/* Set filter */
 	filter = sge_reg_read(e, SGE_REG_RXMACCONTROL);
-	/* disable disable packet filtering before address is set */
-	sge_reg_write(e, SGE_REG_RXMACCONTROL, filter & ~0xf00);
+	/* disable packet filtering before address is set */
+	filter &= ~(SGE_RXCTRL_BCAST | SGE_RXCTRL_ALLPHYS | SGE_RXCTRL_MCAST |
+		SGE_RXCTRL_MYPHYS);
+	sge_reg_write(e, SGE_REG_RXMACCONTROL, filter);
 	/* Write MAC to registers */
 	for (i = 0; i < 6 ; i++)
 	{
@@ -363,9 +373,21 @@ sge_t *e;
 		w = (uint8_t) e->address.ea_addr[i];
 		sge_reg_write(e, SGE_REG_RXMACADDR + i, w);
 	}
-	/* Enable filter = */
-	filter &= ~(SGE_RXCTRL_BCAST | SGE_RXCTRL_ALLPHYS | SGE_RXCTRL_MCAST);
-	filter |= SGE_RXCTRL_MYPHYS | SGE_RXCTRL_BCAST;
+
+	/* Enable filter */
+	filter |= SGE_RXCTRL_MYPHYS;
+	if (e->flags & SGE_PROMISC)
+	{
+		filter |= (SGE_RXCTRL_BCAST | SGE_RXCTRL_MCAST | SGE_RXCTRL_ALLPHYS);
+	}
+	else if (e->flags & SGE_MULTICAST)
+	{
+		filter |= (SGE_RXCTRL_BCAST | SGE_RXCTRL_MCAST);
+	}
+	else
+	{
+		filter |= SGE_RXCTRL_BCAST;
+	}
 
 	sge_reg_write(e, SGE_REG_RXMACCONTROL, filter);
 	sge_reg_write(e, SGE_REG_RXHASHTABLE, 0xffffffff);
