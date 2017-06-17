@@ -66,7 +66,6 @@ int main(int argc, char *argv[])
 	env_setargs(argc, argv);
 	sef_local_startup();
 
-
 	/*
 	 * Enter the main driver loop.
 	 */
@@ -505,18 +504,10 @@ sge_t *e;
 			/* RX descriptors are initially held by hardware */
 			e->rx_desc[i].status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
 			e->rx_desc[i].buf_ptr = rx_buff_p + (i * SGE_BUF_SIZE);
-			e->rx_desc[i].flags = 0;
-			/* Last descriptor is marked as final */
-			if (i == SGE_RXDESC_NR - 1)
-			{
-				e->rx_desc[i].flags = SGE_DESC_FINAL;
-			}
-			else
-			{
-				e->rx_desc[i].flags = 0;
-			}
-			e->rx_desc[i].flags |= (SGE_BUF_SIZE & 0xfff8);
+			e->rx_desc[i].flags = (SGE_BUF_SIZE & 0xfff8);
 		}
+		/* Last descriptor is marked as final */
+		e->rx_desc[SGE_RXDESC_NR - 1].flags |= SGE_DESC_FINAL;
 	}
 
 	if (!e->tx_desc)
@@ -749,9 +740,25 @@ int from_int;
 			panic("sys_safecopyfrom() failed: %d", r);
 		}
 
-		current = e->cur_rx % SGE_RXDESC_NR;
-		desc = &e->rx_desc[current];
-		pkt_size = desc->pkt_size & 0xffff;
+		/* Search for packet not owned by the card. */
+		for (int i = 0; i < SGE_RXDESC_NR; i++)
+		{
+			if (!(desc->status & SGE_RXSTATUS_RXOWN))
+			{
+				current = (e->cur_rx + i) % SGE_RXDESC_NR;
+				desc = &e->rx_desc[current];
+				pkt_size = desc->pkt_size & 0xffff;
+			}
+			else
+			{
+				break;
+			}
+		}
+		/* Give up if none found. */
+		if (desc->status & SGE_RXSTATUS_RXOWN)
+		{
+			return;
+		}
 
 		/* Copy to vector elements. */
 		for (i = 0; i < e->rx_message.m_net_netdrv_dl_readv_s.count &&
@@ -767,18 +774,14 @@ int from_int;
 				panic("sys_safecopyto() failed: %d", r);
 			}
 			bytes += size;
-
-			/* Flip ownership back to the card */
-			desc->pkt_size = 0;
-			desc->status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
-
-			/* Move to next descriptor. */
-			current = (current + 1) % SGE_RXDESC_NR;
-			desc = &e->rx_desc[current];
-			bytes += size;
 		}
+
+		/* Flip ownership back to the card */
+		desc->pkt_size = 0;
+		desc->status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
+
 		/* Update current and reenable. */
-		e->cur_rx = current;
+		e->cur_rx = (current + 1) % SGE_RXDESC_NR;
 		command = sge_reg_read(e, SGE_REG_RX_CTL);
 		sge_reg_write(e, SGE_REG_RX_CTL, 0x10 | command);
 
@@ -1400,7 +1403,6 @@ message *m;
 		if((i%16) == 12)
 			printf("\n");
 	}
-	printf("\n");
 
 	/* EEPROM */
 	printf("EEPROM Dump:\n");
@@ -1429,4 +1431,17 @@ message *m;
 			printf("\n");
 	}
 	printf("\n");
+	printf("Current descriptors: TX: %d, RX: %d\n", e->cur_tx, e->cur_rx);
+	printf("Current descriptor data: TX: %8.8x %8.8x %8.8x %8.8x\n",
+		e->tx_desc[e->cur_tx].pkt_size,	e->tx_desc[e->cur_tx].status,
+		e->tx_desc[e->cur_tx].buf_ptr, e->tx_desc[e->cur_tx].flags);
+	printf("Current descriptor data: RX: %8.8x %8.8x %8.8x %8.8x\n",
+		e->rx_desc[e->cur_rx].pkt_size, e->rx_desc[e->cur_rx].status,
+		e->rx_desc[e->cur_rx].buf_ptr, e->rx_desc[e->cur_rx].flags);
+	printf("Last descriptor data: TX: %8.8x %8.8x %8.8x %8.8x\n",
+		e->tx_desc[(e->cur_tx) - 1].pkt_size, e->tx_desc[(e->cur_tx) - 1].status,
+		e->tx_desc[(e->cur_tx) - 1].buf_ptr, e->tx_desc[(e->cur_tx) - 1].flags);
+	printf("Last descriptor data: RX: %8.8x %8.8x %8.8x %8.8x\n",
+		e->rx_desc[(e->cur_rx) - 1].pkt_size, e->rx_desc[(e->cur_rx) - 1].status,
+		e->rx_desc[(e->cur_rx) - 1].buf_ptr, e->rx_desc[(e->cur_rx) - 1].flags);
 }
