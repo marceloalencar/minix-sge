@@ -471,6 +471,8 @@ sge_t *e;
 	int i;
 	phys_bytes rx_buff_p;
 	phys_bytes tx_buff_p;
+	phys_bytes rx_desc_p;
+	phys_bytes tx_desc_p;
 
 	e->rx_desc_count = SGE_RXDESC_NR;
 	e->tx_desc_count = SGE_TXDESC_NR;
@@ -480,7 +482,7 @@ sge_t *e;
 		/* Allocate RX descriptors. */
 		/* rx_desc is the RX ring space. rx_desc_p is a pointer to it. */
 		if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
-			&e->rx_desc_p)) == NULL)
+			&rx_desc_p)) == NULL)
 		{
 			panic("%s: Failed to allocate RX descriptors.\n", e->name);
 		}
@@ -515,7 +517,7 @@ sge_t *e;
 		/* Allocate TX descriptors. */
 		/* tx_desc is the TX ring space. tx_desc_p is a pointer to it. */
 		if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
-			&e->tx_desc_p)) == NULL)
+			&tx_desc_p)) == NULL)
 		{
 			panic("%s: Failed to allocate TX descriptors.\n", e->name);
 		}
@@ -546,9 +548,11 @@ sge_t *e;
 
 	e->tx_buffer_p = tx_buff_p;
 	e->rx_buffer_p = rx_buff_p;
+	e->tx_desc_p = tx_desc_p;
+	e->rx_desc_p = rx_desc_p;
 	/* Inform card where the buffer is */
-	sge_reg_write(e, SGE_REG_TX_DESC, tx_buff_p);
-	sge_reg_write(e, SGE_REG_RX_DESC, rx_buff_p);
+	sge_reg_write(e, SGE_REG_TX_DESC, tx_desc_p);
+	sge_reg_write(e, SGE_REG_RX_DESC, rx_desc_p);
 }
 
 /*===========================================================================*
@@ -743,14 +747,11 @@ int from_int;
 		/* Search for packet not owned by the card. */
 		for (int i = 0; i < SGE_RXDESC_NR; i++)
 		{
+			current = (e->cur_rx + i) % SGE_RXDESC_NR;
+			desc = &e->rx_desc[current];
 			if (!(desc->status & SGE_RXSTATUS_RXOWN))
 			{
-				current = (e->cur_rx + i) % SGE_RXDESC_NR;
-				desc = &e->rx_desc[current];
 				pkt_size = desc->pkt_size & 0xffff;
-			}
-			else
-			{
 				break;
 			}
 		}
@@ -1438,10 +1439,16 @@ message *m;
 	printf("Current descriptor data: RX: %8.8x %8.8x %8.8x %8.8x\n",
 		e->rx_desc[e->cur_rx].pkt_size, e->rx_desc[e->cur_rx].status,
 		e->rx_desc[e->cur_rx].buf_ptr, e->rx_desc[e->cur_rx].flags);
-	printf("Last descriptor data: TX: %8.8x %8.8x %8.8x %8.8x\n",
-		e->tx_desc[(e->cur_tx) - 1].pkt_size, e->tx_desc[(e->cur_tx) - 1].status,
-		e->tx_desc[(e->cur_tx) - 1].buf_ptr, e->tx_desc[(e->cur_tx) - 1].flags);
-	printf("Last descriptor data: RX: %8.8x %8.8x %8.8x %8.8x\n",
-		e->rx_desc[(e->cur_rx) - 1].pkt_size, e->rx_desc[(e->cur_rx) - 1].status,
-		e->rx_desc[(e->cur_rx) - 1].buf_ptr, e->rx_desc[(e->cur_rx) - 1].flags);
+	if (e->cur_tx != 0)
+	{
+		printf("Last descriptor data: TX: %8.8x %8.8x %8.8x %8.8x\n",
+			e->tx_desc[(e->cur_tx) - 1].pkt_size, e->tx_desc[(e->cur_tx) - 1].status,
+			e->tx_desc[(e->cur_tx) - 1].buf_ptr, e->tx_desc[(e->cur_tx) - 1].flags);
+	}
+	if (e->cur_rx)
+	{
+		printf("Last descriptor data: RX: %8.8x %8.8x %8.8x %8.8x\n",
+			e->rx_desc[(e->cur_rx) - 1].pkt_size, e->rx_desc[(e->cur_rx) - 1].status,
+			e->rx_desc[(e->cur_rx) - 1].buf_ptr, e->rx_desc[(e->cur_rx) - 1].flags);
+	}
 }
