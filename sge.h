@@ -211,20 +211,14 @@ typedef struct sge_desc
 	uint32_t status;
 	uint32_t buf_ptr;
 	uint32_t flags;
-}
-sge_desc_t;
+} sge_desc_t;
 
 typedef struct sge
 {
-	char name[8];
-	int model;
-	int status;
-	int flags;
 	int irq;
 	int irq_hook;
-	int revision;
+	int model;
 	u8_t *regs;
-	ether_addr_t address;
 
 	struct mii_phy *mii;
 	struct mii_phy *first_mii;
@@ -234,15 +228,13 @@ typedef struct sge
 	int duplex_mode;
 	int autoneg_done;
 
-	uint32_t cur_rx;
-	uint32_t cur_tx;
-
 	sge_desc_t *rx_desc;
 	phys_bytes rx_desc_p;
 	int rx_desc_count;
 	char *rx_buffer;
 	phys_bytes rx_buffer_p;
 	int rx_buffer_size;
+	uint32_t cur_rx;
 
 	sge_desc_t *tx_desc;
 	phys_bytes tx_desc_p;
@@ -250,16 +242,11 @@ typedef struct sge
 	char *tx_buffer;
 	phys_bytes tx_buffer_p;
 	int tx_buffer_size;
-
-	int client;
-	message rx_message;
-	message tx_message;
-	size_t rx_size;
+	uint32_t cur_tx;
 
 	int RGMII;
 	int MAC_APC;
-}
-sge_t;
+} sge_t;
 
 struct mii_phy
 {
