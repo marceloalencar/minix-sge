@@ -14,9 +14,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <machine/pci.h>
+#include <sys/mman.h>
 #include "sge.h"
 
-static void sge_init(unsigned int instance, netdriver_addr_t *addr,
+static int sge_init(unsigned int instance, netdriver_addr_t *addr,
 	uint32_t *caps, unsigned int *ticks);
 static void sge_stop(void);
 static void sge_set_mode(unsigned int mode,
@@ -41,6 +42,8 @@ static uint16_t sge_default_phy(sge_t *e);
 static uint16_t sge_reset_phy(sge_t *e, uint32_t addr);
 static void sge_phymode(sge_t *e);
 static void sge_macmode(sge_t *e);
+static uint16_t sge_mii_read(sge_t *e, uint32_t phy, uint32_t reg);
+static void sge_mii_write(sge_t *e, uint32_t phy, uint32_t reg, uint32_t data);
 
 static int sge_instance;
 static sge_t sge_state;
@@ -79,7 +82,7 @@ int main(int argc, char *argv[])
 /*===========================================================================*
  *                               sge_init                                    *
  *===========================================================================*/
-static void sge_init(unsigned int instance, netdriver_addr_t *addr,
+static int sge_init(unsigned int instance, netdriver_addr_t *addr,
 	uint32_t *caps, unsigned int *ticks)
 {
 	/* Create, initialize status struct. Search for hardware */
@@ -137,9 +140,7 @@ static int sge_probe(sge_t *e, int skip)
 			return FALSE;
 	}
 
-	/*
-	 * Set card specific properties.
-	 */
+	/* Set card specific properties. */
 	switch (did)
 	{
 	case SGE_DEV_0190:
@@ -197,6 +198,7 @@ static int sge_probe(sge_t *e, int skip)
 static void sge_init_hw(sge_t *e, netdriver_addr_t *addr)
 {
 	int r, i;
+	uint32_t control;
 	
 	e->irq_hook = e->irq;
 	
@@ -282,7 +284,6 @@ static void sge_reset_hw(sge_t *e)
  *                             sge_init_addr                                 *
  *===========================================================================*/
 static void sge_init_addr(sge_t *e, netdriver_addr_t *addr)
-sge_t *e;
 {
 	static char eakey[] = SGE_ENVVAR "#_EA";
 	static char eafmt[] = "x:x:x:x:x:x";
@@ -309,8 +310,8 @@ sge_t *e;
 		if (e->MAC_APC)
 		{
 			/*
-			// ISA Bridge read not implemented.
-			*/
+			 * ISA Bridge read not implemented.
+			 */
 			panic("Read MAC from APC not implemented...\n");
 		}
 		/* Read from EEPROM. */
@@ -338,6 +339,8 @@ static void sge_set_hwaddr(const netdriver_addr_t *hwaddr)
 {
 	/* Set hardware address */
 	sge_t *e;
+	int i;
+	uint16_t filter;
 	
 	e = &sge_state;
 	
@@ -389,7 +392,7 @@ static void sge_init_buf(sge_t *e)
 		if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
 			&rx_desc_p)) == NULL)
 		{
-			panic("%s: Failed to allocate RX descriptors.\n", e->name);
+			panic("%s: Failed to allocate RX descriptors.\n", netdriver_name());
 		}
 		memset(e->rx_desc, 0, SGE_RX_TOTALSIZE + 15);
 
@@ -399,7 +402,7 @@ static void sge_init_buf(sge_t *e)
 		if ((e->rx_buffer = alloc_contig(e->rx_buffer_size,
 			AC_ALIGN4K, &rx_buff_p)) == NULL)
 		{
-			panic("%s: Failed to allocate RX buffers.\n", e->name);
+			panic("%s: Failed to allocate RX buffers.\n", netdriver_name());
 		}
 
 		e->cur_rx = 0;
@@ -424,7 +427,7 @@ static void sge_init_buf(sge_t *e)
 		if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
 			&tx_desc_p)) == NULL)
 		{
-			panic("%s: Failed to allocate TX descriptors.\n", e->name);
+			panic("%s: Failed to allocate TX descriptors.\n", netdriver_name());
 		}
 		memset(e->tx_desc, 0, SGE_TX_TOTALSIZE + 15);
 
@@ -434,7 +437,7 @@ static void sge_init_buf(sge_t *e)
 		if ((e->tx_buffer = alloc_contig(e->tx_buffer_size,
 			AC_ALIGN4K, &tx_buff_p)) == NULL)
 		{
-			panic("%s: Failed to allocate TX buffers.\n", e->name);
+			panic("%s: Failed to allocate TX buffers.\n", netdriver_name());
 		}
 
 		e->cur_tx = 0;
@@ -623,8 +626,9 @@ static uint16_t sge_reset_phy(sge_t *e, uint32_t addr)
 }
 
 /*===========================================================================*
- *                              sge_phymode                                 *
+ *                              sge_phymode                                  *
  *===========================================================================*/
+/* Might be "obsoleted" */
 static void sge_phymode(sge_t *e)
 {
 	u32_t status;
@@ -684,7 +688,7 @@ static void sge_macmode(sge_t *e)
 	u32_t status;
 
 	status = sge_reg_read(e, SGE_REG_STATIONCONTROL);
-	status = status & ~(0x0f000000 | SGE_REGSC_FDX | SGE_REGSC_SPEED_MASK);
+	status = status & ~(SGE_REGSC_FULL | SGE_REGSC_FDX | SGE_REGSC_SPEED_MASK);
 
 	switch (e->link_speed)
 	{
@@ -720,6 +724,7 @@ static void sge_macmode(sge_t *e)
 static void sge_stop(void)
 {
 	sge_t *e;
+	uint32_t val;
 	
 	sge_reset_hw(e);
 
@@ -778,7 +783,55 @@ static void sge_set_mode(unsigned int mode,
  *===========================================================================*/
 static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 {
+	sge_t *e = &sge_state;
+	sge_desc_t *desc;
+	
+	int r, i, bytes = 0;
+	uint32_t command;
+	uint32_t current;
+	uint32_t status;
+	uint32_t pkt_size;
+	char *ptr;
+	size_t size;
 
+	printf("sge_recv()\n");
+
+	/* Search for packet not owned by the card. */
+	for (int i = 0; i < SGE_RXDESC_NR; i++)
+	{
+		current = (e->cur_rx + i) % SGE_RXDESC_NR;
+		desc = &e->rx_desc[current];
+		if (!(desc->status & SGE_RXSTATUS_RXOWN))
+		{
+			pkt_size = desc->pkt_size & 0xffff;
+			break;
+		}
+	}
+	/* Give up if none found. */
+	if (desc->status & SGE_RXSTATUS_RXOWN)
+	{
+		return SUSPEND;
+	}
+
+	/* Copy the packet to the caller. */
+	ptr = e->rx_buffer + (current * SGE_BUF_SIZE);
+	
+	if (size > max)
+		size = max;
+		
+	netdriver_copyout(data, 0, ptr, size);
+
+	/* Flip ownership back to the card */
+	desc->pkt_size = 0;
+	desc->status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
+
+	/* Update current and reenable. */
+	e->cur_rx = (current + 1) % SGE_RXDESC_NR;
+	command = sge_reg_read(e, SGE_REG_RX_CTL);
+	sge_reg_write(e, SGE_REG_RX_CTL, 0x10 | command);
+	
+	/* Return the size of the received packet. */
+	return pkt_size;
 }
 
 /*===========================================================================*
@@ -786,7 +839,56 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
  *===========================================================================*/
 static int sge_send(struct netdriver_data *data, size_t size)
 {
+	sge_t *e = &sge_state;
+	sge_desc_t *desc;
+	int r, i, bytes = 0;
+	uint32_t command;
+	uint32_t current;
+	uint32_t status;
+	char *ptr;
 
+	printf("sge_send()\n");
+
+	if (!(e->autoneg_done))
+	{
+		return SUSPEND;
+	}
+
+	current = e->cur_tx % SGE_TXDESC_NR;
+	desc = &e->tx_desc[current];
+
+	if (size > SGE_BUF_SIZE)
+		panic("packet too large to send.\n");
+
+	/* Copy the packet from the caller. */
+	ptr = e->tx_buffer + (current * SGE_BUF_SIZE);
+
+	netdriver_copyin(data, 0, ptr, size);
+
+	/* Mark this descriptor ready. */
+	desc->pkt_size = size & 0xffff;
+	desc->status = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
+		SGE_TXSTATUS_DEFEN | SGE_TXSTATUS_THOL3 | SGE_TXSTATUS_TXINT);
+	desc->buf_ptr = e->tx_buffer_p + (current * SGE_BUF_SIZE);
+	desc->flags |= size & 0xffff;
+	if (e->duplex_mode == 0)
+	{
+		desc->status |= (SGE_TXSTATUS_COLSEN | SGE_TXSTATUS_CRSEN |
+			SGE_TXSTATUS_BKFEN);
+		if (e->link_speed == SGE_SPEED_1000)
+			desc->status |= (SGE_TXSTATUS_EXTEN | SGE_TXSTATUS_BSTEN);
+	}
+	desc->status |= SGE_TXSTATUS_TXOWN;
+
+	/* Move to next descriptor. */
+	current = (current + 1) % SGE_TXDESC_NR;
+	e->cur_tx = current;
+	
+	/* Start transmission. */
+	command = sge_reg_read(e, SGE_REG_TX_CTL);
+	sge_reg_write(e, SGE_REG_TX_CTL, 0x10 | command);
+
+	return OK;
 }
 
 /*===========================================================================*
@@ -794,7 +896,89 @@ static int sge_send(struct netdriver_data *data, size_t size)
  *===========================================================================*/
 static unsigned int sge_get_link(uint32_t *media)
 {
-	/* Migrate from phy_reset */
+	sge_t *e;
+	e = &sge_state;
+	
+	u32_t status;
+	u16_t anadv;
+	u16_t anrec;
+	u16_t anexp;
+	u16_t gadv;
+	u16_t grec;
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+	status = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_STATUS);
+
+	if (!(status & SGE_MIISTATUS_LINK))
+		return NDEV_LINK_DOWN;
+
+	anadv = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_ADV);
+	anrec = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_LPAR);
+	anexp = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_EXT);
+
+	e->link_speed = SGE_SPEED_10;
+	e->duplex_mode = SGE_DUPLEX_OFF;
+	*media = IFM_ETHER;
+
+	if((e->model == SGE_DEV_0191) && (anrec & SGE_MIIAUTON_NP)
+		&& (anexp & 0x2))
+	{
+		gadv = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_GADV);
+		grec = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_GLPAR);
+		status = (gadv & (grec >> 2));
+		if(status & 0x200)
+		{
+			e->link_speed = SGE_SPEED_1000;
+			e->duplex_mode = SGE_DUPLEX_ON;
+			*media |= IFM_FDX;
+		}
+		else if (status & 0x100)
+		{
+			e->link_speed = SGE_SPEED_1000;
+			e->duplex_mode = SGE_DUPLEX_OFF;
+			*media |= IFM_HDX;
+		}
+		else
+		{
+			e->duplex_mode = SGE_DUPLEX_OFF;
+			*media |= IFM_HDX;
+		}
+	}
+	else
+	{
+		status = anadv & anrec;
+
+		if (status & (SGE_MIIAUTON_TX | SGE_MIIAUTON_TX_FULL))
+		{
+			e->link_speed = SGE_SPEED_100;			
+		}
+		if (status & (SGE_MIIAUTON_TX_FULL | SGE_MIIAUTON_T_FULL))
+		{
+			e->duplex_mode = SGE_DUPLEX_ON;
+			*media |= IFM_FDX;
+		}
+		else
+		{
+			e->duplex_mode = SGE_DUPLEX_OFF;
+			*media |= IFM_HDX;
+		}
+	}
+
+	switch (e->link_speed)
+	{
+		case SGE_SPEED_1000:
+			*media |= IFM_1000_T;
+			break;
+		case SGE_SPEED_100:
+			*media |= IFM_100_TX;
+			break;
+		case SGE_SPEED_10:
+			*media |= IFM_10_T;
+			break;
+	}
+	
+	e->autoneg_done = 1;
+	
+	return NDEV_LINK_UP;
 }
 
 /*===========================================================================*
@@ -845,12 +1029,14 @@ static void sge_intr(unsigned int mask)
  *===========================================================================*/
 static void sge_tick(void)
 {
-	/* Do regular processing */
+	/* Do periodically processing */
 	sge_t *e;
 	
 	e = &sge_state;
 	
 	/* Update statistics */
+	netdriver_stat_ierror(0);
+	netdriver_stat_coll(0);
 }
 
 /*===========================================================================*
@@ -874,6 +1060,52 @@ static void sge_reg_write(sge_t *e, uint32_t reg, uint32_t value)
 {
 	/* Write to memory mapped register. */
 	*(volatile u32_t *)(e->regs + reg) = value;
+}
+
+/*===========================================================================*
+ *                              sge_mii_read                                 *
+ *===========================================================================*/
+static uint16_t sge_mii_read(sge_t *e, uint32_t phy, uint32_t reg)
+{
+	u32_t read_cmd;
+	u32_t data;
+
+	phy = (phy & 0x1f) << 6;
+	reg = (reg & 0x1f) << 11;
+	read_cmd = SGE_MII_REQ | SGE_MII_READ | phy | reg;
+
+	sge_reg_write(e, SGE_REG_GMIICONTROL, read_cmd);
+	micro_delay(50);
+
+	do
+	{
+		data = sge_reg_read(e, SGE_REG_GMIICONTROL);
+		micro_delay(50);
+	} while ((data & SGE_MII_REQ) != 0);
+
+	return (u16_t)((data & SGE_MII_DATA) >> SGE_MII_DATA_SHIFT);
+}
+
+/*===========================================================================*
+ *                             sge_mii_write                                 *
+ *===========================================================================*/
+static void sge_mii_write(sge_t *e, uint32_t phy, uint32_t reg, uint32_t data)
+{
+	u32_t write_cmd;
+
+	phy = (phy & 0x1f) << 6;
+	reg = (reg & 0x1f) << 11;
+	data = (data & 0xffff) << SGE_MII_DATA_SHIFT;
+	write_cmd = SGE_MII_REQ | SGE_MII_WRITE | phy | reg | data;
+
+	sge_reg_write(e, SGE_REG_GMIICONTROL, write_cmd);
+	micro_delay(500);
+
+	do
+	{
+		data = sge_reg_read(e, SGE_REG_GMIICONTROL);
+		micro_delay(50);
+	} while ((data & SGE_MII_REQ) != 0);
 }
 
 /*===========================================================================*
