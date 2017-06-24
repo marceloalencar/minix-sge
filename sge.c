@@ -744,22 +744,17 @@ int from_int;
 			panic("sys_safecopyfrom() failed: %d", r);
 		}
 
-		/* Search for packet not owned by the card. */
-		for (int i = 0; i < SGE_RXDESC_NR; i++)
-		{
-			current = (e->cur_rx + i) % SGE_RXDESC_NR;
-			desc = &e->rx_desc[current];
-			if (!(desc->status & SGE_RXSTATUS_RXOWN))
-			{
-				pkt_size = desc->pkt_size & 0xffff;
-				break;
-			}
-		}
+		/* Select packet not owned by the card. */
+		current = e->cur_rx % SGE_RXDESC_NR;
+		desc = &e->rx_desc[current];
+
 		/* Give up if none found. */
 		if (desc->status & SGE_RXSTATUS_RXOWN)
 		{
 			return;
 		}
+
+		pkt_size = (desc->pkt_size & 0xffff);
 
 		/* Copy to vector elements. */
 		for (i = 0; i < e->rx_message.m_net_netdrv_dl_readv_s.count &&
