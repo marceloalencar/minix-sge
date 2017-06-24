@@ -786,39 +786,32 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 	sge_t *e = &sge_state;
 	sge_desc_t *desc;
 	
-	int r, i, bytes = 0;
+	int i;
 	uint32_t command;
 	uint32_t current;
-	uint32_t status;
-	uint32_t pkt_size;
 	char *ptr;
 	size_t size;
 
-	printf("sge_recv()\n");
+	/* Select packet not owned by the card. */
+	current = e->cur_rx % SGE_RXDESC_NR;
+	desc = &e->rx_desc[current];
 
-	/* Search for packet not owned by the card. */
-	for (int i = 0; i < SGE_RXDESC_NR; i++)
-	{
-		current = (e->cur_rx + i) % SGE_RXDESC_NR;
-		desc = &e->rx_desc[current];
-		if (!(desc->status & SGE_RXSTATUS_RXOWN))
-		{
-			pkt_size = desc->pkt_size & 0xffff;
-			break;
-		}
-	}
-	/* Give up if none found. */
+	/* Give up if owned by card. */
 	if (desc->status & SGE_RXSTATUS_RXOWN)
 	{
 		return SUSPEND;
 	}
 
+	size = desc->pkt_size & 0xffff;
+
 	/* Copy the packet to the caller. */
 	ptr = e->rx_buffer + (current * SGE_BUF_SIZE);
-	
+
+	printf("sge_recv()= Size: %d, Max: %d\n", size, max);
+
 	if (size > max)
 		size = max;
-		
+
 	netdriver_copyout(data, 0, ptr, size);
 
 	/* Flip ownership back to the card */
@@ -829,9 +822,9 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 	e->cur_rx = (current + 1) % SGE_RXDESC_NR;
 	command = sge_reg_read(e, SGE_REG_RX_CTL);
 	sge_reg_write(e, SGE_REG_RX_CTL, 0x10 | command);
-	
+
 	/* Return the size of the received packet. */
-	return pkt_size;
+	return size;
 }
 
 /*===========================================================================*
@@ -841,13 +834,12 @@ static int sge_send(struct netdriver_data *data, size_t size)
 {
 	sge_t *e = &sge_state;
 	sge_desc_t *desc;
-	int r, i, bytes = 0;
+
 	uint32_t command;
 	uint32_t current;
-	uint32_t status;
 	char *ptr;
 
-	printf("sge_send()\n");
+	printf("sge_send()= Size: %d\n", size);
 
 	if (!(e->autoneg_done))
 	{
@@ -871,7 +863,7 @@ static int sge_send(struct netdriver_data *data, size_t size)
 		SGE_TXSTATUS_DEFEN | SGE_TXSTATUS_THOL3 | SGE_TXSTATUS_TXINT);
 	desc->buf_ptr = e->tx_buffer_p + (current * SGE_BUF_SIZE);
 	desc->flags |= size & 0xffff;
-	if (e->duplex_mode == 0)
+	if (e->duplex_mode == SGE_DUPLEX_OFF)
 	{
 		desc->status |= (SGE_TXSTATUS_COLSEN | SGE_TXSTATUS_CRSEN |
 			SGE_TXSTATUS_BKFEN);
@@ -880,11 +872,8 @@ static int sge_send(struct netdriver_data *data, size_t size)
 	}
 	desc->status |= SGE_TXSTATUS_TXOWN;
 
-	/* Move to next descriptor. */
-	current = (current + 1) % SGE_TXDESC_NR;
-	e->cur_tx = current;
-	
-	/* Start transmission. */
+	/* Update current and reenable. */
+	e->cur_tx = (current + 1) % SGE_TXDESC_NR;
 	command = sge_reg_read(e, SGE_REG_TX_CTL);
 	sge_reg_write(e, SGE_REG_TX_CTL, 0x10 | command);
 
