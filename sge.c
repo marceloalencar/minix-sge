@@ -375,7 +375,7 @@ static void sge_set_hwaddr(const netdriver_addr_t *hwaddr)
 static void sge_init_buf(sge_t *e)
 {
 	/* This function initializes the TX/RX rings, used for DMA transfers */
-	int i;
+	int i, rx_align, tx_align;
 	phys_bytes rx_buff_p;
 	phys_bytes tx_buff_p;
 	phys_bytes rx_desc_p;
@@ -397,13 +397,17 @@ static void sge_init_buf(sge_t *e)
 		memset(e->rx_desc, 0, SGE_RX_TOTALSIZE + 15);
 
 		/* Allocate RX buffers */
-		e->rx_buffer_size = SGE_RXDESC_NR * SGE_BUF_SIZE;
+		e->rx_buffer_size = SGE_RXDESC_NR * SGE_BUF_SIZE + 15;
 
 		if ((e->rx_buffer = alloc_contig(e->rx_buffer_size,
 			AC_ALIGN4K, &rx_buff_p)) == NULL)
 		{
 			panic("%s: Failed to allocate RX buffers.\n", netdriver_name());
 		}
+		memset(e->rx_buffer, 0, e->rx_buffer_size);
+		/* Align */
+		rx_align = ((rx_buff_p + 0xf) & ~0xf) - rx_buff_p;
+		rx_buff_p = ((rx_buff_p + 0xf) & ~0xf);
 
 		e->cur_rx = 0;
 
@@ -432,13 +436,17 @@ static void sge_init_buf(sge_t *e)
 		memset(e->tx_desc, 0, SGE_TX_TOTALSIZE + 15);
 
 		/* Allocate TX buffers */
-		e->tx_buffer_size = SGE_TXDESC_NR * SGE_BUF_SIZE;
+		e->tx_buffer_size = SGE_TXDESC_NR * SGE_BUF_SIZE + 15;
 
 		if ((e->tx_buffer = alloc_contig(e->tx_buffer_size,
 			AC_ALIGN4K, &tx_buff_p)) == NULL)
 		{
 			panic("%s: Failed to allocate TX buffers.\n", netdriver_name());
 		}
+		memset(e->tx_buffer, 0, e->tx_buffer_size);
+		/* Align */
+		tx_align = ((tx_buff_p + 0xf) & ~0xf) - tx_buff_p;
+		tx_buff_p = ((tx_buff_p + 0xf) & ~0xf);
 
 		e->cur_tx = 0;
 
@@ -454,6 +462,8 @@ static void sge_init_buf(sge_t *e)
 		e->tx_desc[SGE_TXDESC_NR - 1].flags = SGE_DESC_FINAL;
 	}
 
+	e->tx_buffer += tx_align;
+	e->rx_buffer += rx_align;
 	e->tx_buffer_p = tx_buff_p;
 	e->rx_buffer_p = rx_buff_p;
 	e->tx_desc_p = tx_desc_p;
@@ -735,12 +745,6 @@ static void sge_stop(void)
 	sge_reg_write(e, SGE_REG_INTRCONTROL, val);
 	micro_delay(50);
 	sge_reg_write(e, SGE_REG_INTRCONTROL, val & ~0x8000);
-	
-	free_contig(e->rx_desc, SGE_RX_TOTALSIZE + 15);
-	free_contig(e->rx_buffer, e->rx_buffer_size);
-	free_contig(e->tx_desc, SGE_TX_TOTALSIZE + 15);
-	free_contig(e->tx_buffer, e->tx_buffer_size);
-	free_contig(e->mii, sizeof(struct mii_phy));
 }
 
 /*===========================================================================*
@@ -809,6 +813,14 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 
 	printf("sge_recv()= Size: %d, Max: %d\n", size, max);
 
+	printf("[ ");
+	for(i = 0; i < size; i++)
+	{
+		printf("%02x ", (unsigned char)*(e->rx_buffer + (current * SGE_BUF_SIZE) + i));
+	}
+	printf("]\n");
+	printf("Addr: %x\n", desc->buf_ptr);
+
 	if (size > max)
 		size = max;
 
@@ -838,8 +850,7 @@ static int sge_send(struct netdriver_data *data, size_t size)
 	uint32_t command;
 	uint32_t current;
 	char *ptr;
-
-	printf("sge_send()= Size: %d\n", size);
+	int i;
 
 	if (!(e->autoneg_done))
 	{
@@ -855,7 +866,23 @@ static int sge_send(struct netdriver_data *data, size_t size)
 	/* Copy the packet from the caller. */
 	ptr = e->tx_buffer + (current * SGE_BUF_SIZE);
 
+	if (size < ETH_MIN_PACK_SIZE)
+	{
+		memset(ptr + size, 0, ETH_MIN_PACK_SIZE - size);
+		size = ETH_MIN_PACK_SIZE;
+	}
+
+	printf("sge_send()= Size: %d\n", size);
+
 	netdriver_copyin(data, 0, ptr, size);
+
+	printf("[ ");
+	for(i = 0; i < size; i++)
+	{
+		printf("%02x ", (unsigned char)*(e->tx_buffer + (current * SGE_BUF_SIZE) + i));
+	}
+	printf("]\n");
+	printf("Addr: %x\n", desc->buf_ptr);
 
 	/* Mark this descriptor ready. */
 	desc->pkt_size = size & 0xffff;

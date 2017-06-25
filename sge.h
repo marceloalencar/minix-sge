@@ -44,7 +44,7 @@
 
 /* Buffer info */
 #define SGE_IOVEC_NR		16
-#define SGE_BUF_SIZE		ETH_MAX_PACK_SIZE_TAGGED + ETH_HDR_SIZE + ETH_CRC_SIZE
+#define SGE_BUF_SIZE		2048
 #define SGE_RXDESC_NR		32
 #define SGE_TXDESC_NR		32
 #define SGE_RX_TOTALSIZE		SGE_RXDESC_NR*sizeof(sge_desc_t)
