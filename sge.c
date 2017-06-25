@@ -802,7 +802,7 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 		return SUSPEND;
 	}
 
-	size = (desc->pkt_size & 0xffff) - ETH_CRC_SIZE;
+	size = desc->pkt_size & 0xffff;
 
 	/* Copy the packet to the caller. */
 	ptr = e->rx_buffer + (current * SGE_BUF_SIZE);
