@@ -269,7 +269,7 @@ static void sge_reset_hw(sge_t *e)
 
 	sge_reg_write(e, SGE_REG_RGMIIDELAY, 0x0);
 	sge_reg_write(e, SGE_REG_RESERVED3, 0x0);
-	sge_reg_write(e, SGE_REG_RXMACCONTROL, 0x00000252);
+	sge_reg_write(e, SGE_REG_RXMACCONTROL, 0x12);
 
 	sge_reg_write(e, SGE_REG_RXHASHTABLE, 0x0);
 	sge_reg_write(e, SGE_REG_RXHASHTABLE2, 0x0);
@@ -811,15 +811,15 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 	/* Copy the packet to the caller. */
 	ptr = e->rx_buffer + (current * SGE_BUF_SIZE);
 
-	printf("sge_recv()= Size: %d, Max: %d\n", size, max);
+//	printf("sge_recv()= Size: %d, Max: %d\n", size, max);
 
-	printf("[ ");
-	for(i = 0; i < size; i++)
-	{
-		printf("%02x ", (unsigned char)*(e->rx_buffer + (current * SGE_BUF_SIZE) + i));
-	}
-	printf("]\n");
-	printf("Addr: %x\n", desc->buf_ptr);
+//	printf("[ ");
+//	for(i = 0; i < size; i++)
+//	{
+//		printf("%02x ", (unsigned char)*(e->rx_buffer + (current * SGE_BUF_SIZE) + i));
+//	}
+//	printf("]\n");
+//	printf("Addr: %x\n", desc->buf_ptr);
 
 	if (size > max)
 		size = max;
@@ -872,17 +872,17 @@ static int sge_send(struct netdriver_data *data, size_t size)
 		size = ETH_MIN_PACK_SIZE;
 	}
 
-	printf("sge_send()= Size: %d\n", size);
+//	printf("sge_send()= Size: %d\n", size);
 
 	netdriver_copyin(data, 0, ptr, size);
 
-	printf("[ ");
-	for(i = 0; i < size; i++)
-	{
-		printf("%02x ", (unsigned char)*(e->tx_buffer + (current * SGE_BUF_SIZE) + i));
-	}
-	printf("]\n");
-	printf("Addr: %x\n", desc->buf_ptr);
+//	printf("[ ");
+//	for(i = 0; i < size; i++)
+//	{
+//		printf("%02x ", (unsigned char)*(e->tx_buffer + (current * SGE_BUF_SIZE) + i));
+//	}
+//	printf("]\n");
+//	printf("Addr: %x\n", desc->buf_ptr);
 
 	/* Mark this descriptor ready. */
 	desc->pkt_size = size & 0xffff;
