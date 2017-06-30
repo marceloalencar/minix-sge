@@ -11,10 +11,9 @@
  
 #include <minix/drivers.h>
 #include <minix/netdriver.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <machine/pci.h>
 #include <sys/mman.h>
+
 #include "sge.h"
 
 static int sge_init(unsigned int instance, netdriver_addr_t *addr,
@@ -68,7 +67,8 @@ static const struct netdriver sge_table = {
 /*===========================================================================*
  *                                    main                                   *
  *===========================================================================*/
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
 	/* This is the main driver task. */
 	env_setargs(argc, argv);
@@ -82,10 +82,11 @@ int main(int argc, char *argv[])
 /*===========================================================================*
  *                               sge_init                                    *
  *===========================================================================*/
-static int sge_init(unsigned int instance, netdriver_addr_t *addr,
-	uint32_t *caps, unsigned int *ticks)
+static int
+sge_init(unsigned int instance, netdriver_addr_t *addr, uint32_t *caps,
+	unsigned int *ticks)
 {
-	/* Create, initialize status struct. Search for hardware */
+	/* Create, initialize status struct */
 	
 	sge_t *e;
 	int r;
@@ -101,7 +102,7 @@ static int sge_init(unsigned int instance, netdriver_addr_t *addr,
 	if ((r = tsc_calibrate()) != OK)
 		panic("tsc_calibrate failed: %d\n", r);
 
-	/* See if we can find a matching device. */
+	/* Try to find a matching device. */
 	if (!sge_probe(e, instance))
 		return ENXIO;
 
@@ -110,19 +111,20 @@ static int sge_init(unsigned int instance, netdriver_addr_t *addr,
 
 	*caps = NDEV_CAP_MCAST | NDEV_CAP_BCAST | NDEV_CAP_HWADDR;
 	*ticks = sys_hz() / 10; /* update statistics 10x/sec */
+
 	return OK;
 }
 
 /*===========================================================================*
  *                              sge_probe                                    *
  *===========================================================================*/
-static int sge_probe(sge_t *e, int skip)
+static int
+sge_probe(sge_t *e, int skip)
 {
 	int r, devind, ioflag;
 	u16_t vid, did, cr;
 	u32_t status;
 	u32_t base, size;
-	char *dname;
 
 	/* Initialize communication to the PCI driver. */
 	pci_init();
@@ -144,19 +146,9 @@ static int sge_probe(sge_t *e, int skip)
 	switch (did)
 	{
 	case SGE_DEV_0190:
-		/* Inform the user about the new card. */
-		if (!(dname = pci_dev_name(vid, did)))
-		{
-			dname = "SiS 190 PCI Fast Ethernet Adapter";
-		}
 		e->model = SGE_DEV_0190;
 		break;
 	case SGE_DEV_0191:
-		/* Inform the user about the new card. */
-		if (!(dname = pci_dev_name(vid, did)))
-		{
-			dname = "SiS 191 PCI Gigabit Ethernet Adapter";
-		}
 		e->model = SGE_DEV_0191;
 		break;
 	default:
@@ -183,9 +175,9 @@ static int sge_probe(sge_t *e, int skip)
 	if (!(cr & PCI_CR_MAST_EN))
 		pci_attr_w16(devind, PCI_CR, cr | PCI_CR_MAST_EN);
 
-	/* Where to read MAC from? *
-	 * isAPC = 0: From EEPROM  *
-	 * isAPC = 1: From APC     */
+	/* Where to read MAC from?          *
+	 * isAPC = 0: From EEPROM           *
+	 * isAPC = 1: From APC CMOS RAM     */
 	int isAPC = pci_attr_r8(devind, 0x73);
 	e->MAC_APC = ((isAPC & 0x1) == 0) ? 0 : 1;
 
@@ -195,9 +187,10 @@ static int sge_probe(sge_t *e, int skip)
 /*===========================================================================*
  *                             sge_init_hw                                   *
  *===========================================================================*/
-static void sge_init_hw(sge_t *e, netdriver_addr_t *addr)
+static void
+sge_init_hw(sge_t *e, netdriver_addr_t *addr)
 {
-	int r, i;
+	int r;
 	uint32_t control;
 	
 	e->irq_hook = e->irq;
@@ -232,7 +225,8 @@ static void sge_init_hw(sge_t *e, netdriver_addr_t *addr)
 /*===========================================================================*
  *                             sge_reset_hw                                  *
  *===========================================================================*/
-static void sge_reset_hw(sge_t *e)
+static void
+sge_reset_hw(sge_t *e)
 {
 	sge_reg_write(e, SGE_REG_INTRMASK, 0);
 	sge_reg_write(e, SGE_REG_INTRSTATUS, 0xffffffff);
@@ -283,7 +277,8 @@ static void sge_reset_hw(sge_t *e)
 /*===========================================================================*
  *                             sge_init_addr                                 *
  *===========================================================================*/
-static void sge_init_addr(sge_t *e, netdriver_addr_t *addr)
+static void
+sge_init_addr(sge_t *e, netdriver_addr_t *addr)
 {
 	static char eakey[] = SGE_ENVVAR "#_EA";
 	static char eafmt[] = "x:x:x:x:x:x";
@@ -292,7 +287,7 @@ static void sge_init_addr(sge_t *e, netdriver_addr_t *addr)
 	int i;
 	long v;
 	
-	/* Do we have a user defined ethernet address? */
+	/* Do we have a user defined MAC address? */
 	eakey[sizeof(SGE_ENVVAR)-1] = '0' + sge_instance;
 
 	for (i = 0; i < 6; i++)
@@ -310,11 +305,11 @@ static void sge_init_addr(sge_t *e, netdriver_addr_t *addr)
 		if (e->MAC_APC)
 		{
 			/*
-			 * ISA Bridge read not implemented.
+			 * Can't read from PCI to ISA bridge right now...
 			 */
 			panic("Read MAC from APC not implemented...\n");
 		}
-		/* Read from EEPROM. */
+		/* Read MAC from EEPROM. */
 		else
 		{
 			for (i = 0; i < 3; i++)
@@ -335,7 +330,8 @@ static void sge_init_addr(sge_t *e, netdriver_addr_t *addr)
 /*===========================================================================*
  *                            sge_set_hwaddr                                 *
  *===========================================================================*/
-static void sge_set_hwaddr(const netdriver_addr_t *hwaddr)
+static void
+sge_set_hwaddr(const netdriver_addr_t *hwaddr)
 {
 	/* Set hardware address */
 	sge_t *e;
@@ -372,7 +368,8 @@ static void sge_set_hwaddr(const netdriver_addr_t *hwaddr)
 /*===========================================================================*
  *                              sge_init_buf                                 *
  *===========================================================================*/
-static void sge_init_buf(sge_t *e)
+static void
+sge_init_buf(sge_t *e)
 {
 	/* This function initializes the TX/RX rings, used for DMA transfers */
 	int i, rx_align, tx_align;
@@ -387,25 +384,26 @@ static void sge_init_buf(sge_t *e)
 
 	if (!e->rx_desc)
 	{
-		/* Allocate RX descriptors. */
-		/* rx_desc is the RX ring space. rx_desc_p is a pointer to it. */
-		if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
+		/* Allocate RX descriptors.    */
+		/* rx_desc: Virtual address    */
+		/* rx_desc_p: Physical address */
+		if ((e->rx_desc = alloc_contig(SGE_RXD_TOTALSIZE + 15, AC_ALIGN4K,
 			&rx_desc_p)) == NULL)
 		{
-			panic("%s: Failed to allocate RX descriptors.\n", netdriver_name());
+			panic("%s: Failed to allocate RX descriptors.\n",
+				netdriver_name());
 		}
-		memset(e->rx_desc, 0, SGE_RX_TOTALSIZE + 15);
+		memset(e->rx_desc, 0, SGE_RXD_TOTALSIZE + 15);
 
 		/* Allocate RX buffers */
-		e->rx_buffer_size = SGE_RXDESC_NR * SGE_BUF_SIZE + 15;
-
-		if ((e->rx_buffer = alloc_contig(e->rx_buffer_size,
-			AC_ALIGN4K, &rx_buff_p)) == NULL)
+		if ((e->rx_buffer = alloc_contig(SGE_RXB_TOTALSIZE + 15, AC_ALIGN4K,
+			&rx_buff_p)) == NULL)
 		{
 			panic("%s: Failed to allocate RX buffers.\n", netdriver_name());
 		}
-		memset(e->rx_buffer, 0, e->rx_buffer_size);
-		/* Align */
+		memset(e->rx_buffer, 0, SGE_RXB_TOTALSIZE + 15);
+
+		/* Align addresses to multiple of 16 bit */
 		rx_align = ((rx_buff_p + 0xf) & ~0xf) - rx_buff_p;
 		rx_buff_p = ((rx_buff_p + 0xf) & ~0xf);
 
@@ -414,8 +412,8 @@ static void sge_init_buf(sge_t *e)
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_RXDESC_NR; i++)
 		{
-			e->rx_desc[i].pkt_size = 0;
 			/* RX descriptors are initially held by hardware */
+			e->rx_desc[i].pkt_size = 0;
 			e->rx_desc[i].status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
 			e->rx_desc[i].buf_ptr = rx_buff_p + (i * SGE_BUF_SIZE);
 			e->rx_desc[i].flags = (SGE_BUF_SIZE & 0xfff8);
@@ -426,25 +424,26 @@ static void sge_init_buf(sge_t *e)
 
 	if (!e->tx_desc)
 	{
-		/* Allocate TX descriptors. */
-		/* tx_desc is the TX ring space. tx_desc_p is a pointer to it. */
-		if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
+		/* Allocate TX descriptors.    */
+		/* tx_desc: Virtual address    */
+		/* tx_desc_p: Physical address */
+		if ((e->tx_desc = alloc_contig(SGE_TXD_TOTALSIZE + 15, AC_ALIGN4K,
 			&tx_desc_p)) == NULL)
 		{
-			panic("%s: Failed to allocate TX descriptors.\n", netdriver_name());
+			panic("%s: Failed to allocate TX descriptors.\n",
+				netdriver_name());
 		}
-		memset(e->tx_desc, 0, SGE_TX_TOTALSIZE + 15);
+		memset(e->tx_desc, 0, SGE_TXD_TOTALSIZE + 15);
 
 		/* Allocate TX buffers */
-		e->tx_buffer_size = SGE_TXDESC_NR * SGE_BUF_SIZE + 15;
-
-		if ((e->tx_buffer = alloc_contig(e->tx_buffer_size,
-			AC_ALIGN4K, &tx_buff_p)) == NULL)
+		if ((e->tx_buffer = alloc_contig(SGE_TXB_TOTALSIZE + 15, AC_ALIGN4K,
+			&tx_buff_p)) == NULL)
 		{
 			panic("%s: Failed to allocate TX buffers.\n", netdriver_name());
 		}
-		memset(e->tx_buffer, 0, e->tx_buffer_size);
-		/* Align */
+		memset(e->tx_buffer, 0, SGE_TXB_TOTALSIZE + 15);
+
+		/* Align addresses to multiple of 16 bit */
 		tx_align = ((tx_buff_p + 0xf) & ~0xf) - tx_buff_p;
 		tx_buff_p = ((tx_buff_p + 0xf) & ~0xf);
 
@@ -453,6 +452,7 @@ static void sge_init_buf(sge_t *e)
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_TXDESC_NR; i++)
 		{
+			/* TX descriptors will be filled by software */
 			e->tx_desc[i].pkt_size = 0;
 			e->tx_desc[i].status = 0;
 			e->tx_desc[i].buf_ptr = 0;
@@ -462,12 +462,14 @@ static void sge_init_buf(sge_t *e)
 		e->tx_desc[SGE_TXDESC_NR - 1].flags = SGE_DESC_FINAL;
 	}
 
+	/* Apply alignment to virtual addresses, and store at status */
 	e->tx_buffer += tx_align;
 	e->rx_buffer += rx_align;
 	e->tx_buffer_p = tx_buff_p;
 	e->rx_buffer_p = rx_buff_p;
 	e->tx_desc_p = tx_desc_p;
 	e->rx_desc_p = rx_desc_p;
+
 	/* Inform card where the buffer is */
 	sge_reg_write(e, SGE_REG_TX_DESC, tx_desc_p);
 	sge_reg_write(e, SGE_REG_RX_DESC, rx_desc_p);
@@ -476,7 +478,8 @@ static void sge_init_buf(sge_t *e)
 /*===========================================================================*
  *                             sge_mii_probe                                 *
  *===========================================================================*/
-static int sge_mii_probe(sge_t *e)
+static int
+sge_mii_probe(sge_t *e)
 {
 	int timeout = 10000;
 	int autoneg_done = 0;
@@ -485,7 +488,7 @@ static int sge_mii_probe(sge_t *e)
 	u16_t status;
 	u16_t link_status = SGE_MIISTATUS_LINK;
 
-	/* Search for PHY */
+	/* Search for PHY transceiver */
 	for (addr = 0; addr < 32; addr++)
 	{
 		status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
@@ -507,8 +510,8 @@ static int sge_mii_probe(sge_t *e)
 
 	if (e->mii == NULL)
 	{
-		panic("sge: No transceiver found!\n");
-		return 0;
+		panic("%s: No transceiver found!\n", netdriver_name());
+		return -ENODEV;
 	}
 
 	e->mii = NULL;
@@ -517,7 +520,7 @@ static int sge_mii_probe(sge_t *e)
 
 	status = sge_reset_phy(e, e->cur_phy);
 
-	if(status & SGE_MIISTATUS_LINK)
+	if (status & SGE_MIISTATUS_LINK)
 	{
 		int i;
 		for (i = 0; i < timeout; i++)
@@ -533,7 +536,7 @@ static int sge_mii_probe(sge_t *e)
 
 		if (i == timeout)
 		{
-			printf("sge: reset phy and link down now\n");
+			printf("%s: PHY reset, media down.\n", netdriver_name());
 			return -ETIME;
 		}
 	}
@@ -574,7 +577,8 @@ static int sge_mii_probe(sge_t *e)
 /*===========================================================================*
  *                            sge_default_phy                                *
  *===========================================================================*/
-static uint16_t sge_default_phy(sge_t *e)
+static uint16_t
+sge_default_phy(sge_t *e)
 {
 	struct mii_phy *phy = NULL;
 	struct mii_phy *default_phy = NULL;
@@ -621,9 +625,9 @@ static uint16_t sge_default_phy(sge_t *e)
 /*===========================================================================*
  *                             sge_reset_phy                                 *
  *===========================================================================*/
-static uint16_t sge_reset_phy(sge_t *e, uint32_t addr)
+static uint16_t
+sge_reset_phy(sge_t *e, uint32_t addr)
 {
-	int i = 0;
 	u16_t status;
 
 	status = sge_mii_read(e, addr, SGE_MIIADDR_STATUS);
@@ -638,8 +642,8 @@ static uint16_t sge_reset_phy(sge_t *e, uint32_t addr)
 /*===========================================================================*
  *                              sge_phymode                                  *
  *===========================================================================*/
-/* Might be "obsoleted" */
-static void sge_phymode(sge_t *e)
+static void
+sge_phymode(sge_t *e)
 {
 	u32_t status;
 	u16_t anadv;
@@ -666,7 +670,7 @@ static void sge_phymode(sge_t *e)
 		gadv = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_GADV);
 		grec = sge_mii_read(e, e->cur_phy, SGE_MIIADDR_AUTO_GLPAR);
 		status = (gadv & (grec >> 2));
-		if(status & 0x200)
+		if (status & 0x200)
 		{
 			e->link_speed = SGE_SPEED_1000;
 			e->duplex_mode = SGE_DUPLEX_ON;
@@ -693,7 +697,8 @@ static void sge_phymode(sge_t *e)
 /*===========================================================================*
  *                              sge_macmode                                  *
  *===========================================================================*/
-static void sge_macmode(sge_t *e)
+static void
+sge_macmode(sge_t *e)
 {
 	u32_t status;
 
@@ -712,7 +717,7 @@ static void sge_macmode(sge_t *e)
 			status |= (SGE_REGSC_SPEED_10 | (0x1 << 26));
 			break;
 		default:
-			printf("sge: Unsupported link speed.\n");
+			printf("%s: Unsupported link speed.\n", netdriver_name());
 	}
 
 	if (e->duplex_mode)
@@ -731,11 +736,13 @@ static void sge_macmode(sge_t *e)
 /*===========================================================================*
  *                               sge_stop                                    *
  *===========================================================================*/
-static void sge_stop(void)
+static void
+sge_stop(void)
 {
 	sge_t *e;
 	uint32_t val;
-	
+
+	e = &sge_state;
 	sge_reset_hw(e);
 
 	sge_reg_write(e, SGE_REG_INTRMASK, 0x0);
@@ -750,9 +757,11 @@ static void sge_stop(void)
 /*===========================================================================*
  *                             sge_set_mode                                  *
  *===========================================================================*/
-static void sge_set_mode(unsigned int mode,
-	const netdriver_addr_t *mcast_list, unsigned int mcast_count)
+static void
+sge_set_mode(unsigned int mode, const netdriver_addr_t *mcast_list,
+	unsigned int mcast_count)
 {
+	/* Set RX mode according to settings from netdriver */
 	sge_t *e;
 	e = &sge_state;
 	uint16_t filter;
@@ -785,34 +794,36 @@ static void sge_set_mode(unsigned int mode,
 /*===========================================================================*
  *                               sge_recv                                    *
  *===========================================================================*/
-static ssize_t sge_recv(struct netdriver_data *data, size_t max)
+static ssize_t
+sge_recv(struct netdriver_data *data, size_t max)
 {
 	sge_t *e = &sge_state;
 	sge_desc_t *desc;
 	
-	int i;
 	uint32_t command;
 	uint32_t current;
 	char *ptr;
 	size_t size;
 
-	/* Select packet not owned by the card. */
+	/* Select current packet descriptor from list */
 	current = e->cur_rx % SGE_RXDESC_NR;
 	desc = &e->rx_desc[current];
 
-	/* Give up if owned by card. */
+	/* Packet still held by the card? Give up */
 	if (desc->status & SGE_RXSTATUS_RXOWN)
 	{
 		return SUSPEND;
 	}
 
+	/* Get user data size. CRC is removed by hardware. */
 	size = desc->pkt_size & 0xffff;
 
-	/* Copy the packet to the caller. */
+	/* Set address of data in buffer */
 	ptr = e->rx_buffer + (current * SGE_BUF_SIZE);
 
+// ------ DEBUG: PRINT PACKET TO SCREEN --------
+//	int i;
 //	printf("sge_recv()= Size: %d, Max: %d\n", size, max);
-
 //	printf("[ ");
 //	for(i = 0; i < size; i++)
 //	{
@@ -820,17 +831,20 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 //	}
 //	printf("]\n");
 //	printf("Addr: %x\n", desc->buf_ptr);
+// ------ DEBUG: PRINT PACKET TO SCREEN --------
 
+	/* Truncate packets bigger than MTU. */
 	if (size > max)
 		size = max;
 
+	/* Copy the packet to the caller. */
 	netdriver_copyout(data, 0, ptr, size);
 
 	/* Flip ownership back to the card */
 	desc->pkt_size = 0;
 	desc->status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
 
-	/* Update current and reenable. */
+	/* Update current descriptor and reenable. */
 	e->cur_rx = (current + 1) % SGE_RXDESC_NR;
 	command = sge_reg_read(e, SGE_REG_RX_CTL);
 	sge_reg_write(e, SGE_REG_RX_CTL, 0x10 | command);
@@ -842,7 +856,8 @@ static ssize_t sge_recv(struct netdriver_data *data, size_t max)
 /*===========================================================================*
  *                               sge_send                                    *
  *===========================================================================*/
-static int sge_send(struct netdriver_data *data, size_t size)
+static int
+sge_send(struct netdriver_data *data, size_t size)
 {
 	sge_t *e = &sge_state;
 	sge_desc_t *desc;
@@ -850,32 +865,37 @@ static int sge_send(struct netdriver_data *data, size_t size)
 	uint32_t command;
 	uint32_t current;
 	char *ptr;
-	int i;
 
+	/* Do not receive packets while autonegotiation is running */
 	if (!(e->autoneg_done))
 	{
 		return SUSPEND;
 	}
 
+	/* Select current packet descriptor from list */
 	current = e->cur_tx % SGE_TXDESC_NR;
 	desc = &e->tx_desc[current];
 
+	/* Packet bigger than MTU. OS should already know this */
 	if (size > SGE_BUF_SIZE)
 		panic("packet too large to send.\n");
 
-	/* Copy the packet from the caller. */
+	/* Set address of data in buffer */
 	ptr = e->tx_buffer + (current * SGE_BUF_SIZE);
 
-	if (size < ETH_MIN_PACK_SIZE)
+	/* Insert padding to very small packets. */
+	if (size < NDEV_ETH_PACKET_MIN)
 	{
-		memset(ptr + size, 0, ETH_MIN_PACK_SIZE - size);
-		size = ETH_MIN_PACK_SIZE;
+		memset(ptr + size, 0, NDEV_ETH_PACKET_MIN - size);
+		size = NDEV_ETH_PACKET_MIN;
 	}
 
-//	printf("sge_send()= Size: %d\n", size);
-
+	/* Copy the packet from the caller. */
 	netdriver_copyin(data, 0, ptr, size);
 
+// ------ DEBUG: PRINT PACKET TO SCREEN --------
+//	int i;
+//	printf("sge_send()= Size: %d\n", size);
 //	printf("[ ");
 //	for(i = 0; i < size; i++)
 //	{
@@ -883,6 +903,7 @@ static int sge_send(struct netdriver_data *data, size_t size)
 //	}
 //	printf("]\n");
 //	printf("Addr: %x\n", desc->buf_ptr);
+// ------ DEBUG: PRINT PACKET TO SCREEN --------
 
 	/* Mark this descriptor ready. */
 	desc->pkt_size = size & 0xffff;
@@ -899,7 +920,7 @@ static int sge_send(struct netdriver_data *data, size_t size)
 	}
 	desc->status |= SGE_TXSTATUS_TXOWN;
 
-	/* Update current and reenable. */
+	/* Update current descriptor and reenable. */
 	e->cur_tx = (current + 1) % SGE_TXDESC_NR;
 	command = sge_reg_read(e, SGE_REG_TX_CTL);
 	sge_reg_write(e, SGE_REG_TX_CTL, 0x10 | command);
@@ -910,8 +931,10 @@ static int sge_send(struct netdriver_data *data, size_t size)
 /*===========================================================================*
  *                             sge_get_link                                  *
  *===========================================================================*/
-static unsigned int sge_get_link(uint32_t *media)
+static unsigned int
+sge_get_link(uint32_t *media)
 {
+	/* Get media status */
 	sge_t *e;
 	e = &sge_state;
 	
@@ -1000,16 +1023,15 @@ static unsigned int sge_get_link(uint32_t *media)
 /*===========================================================================*
  *                               sge_intr                                    *
  *===========================================================================*/
-static void sge_intr(unsigned int mask)
+static void
+sge_intr(unsigned int mask)
 {
 	sge_t *e;
 	u32_t status;
 
 	e = &sge_state;
 
-	/*
-	 * Check the card for interrupt reason(s).
-	 */
+	/* Check the card for interrupt reason(s) */
 	status = sge_reg_read(e, SGE_REG_INTRSTATUS);;
 	if (!(status == 0xffffffff || (status & SGE_INTRS) == 0))
 	{
@@ -1017,17 +1039,20 @@ static void sge_intr(unsigned int mask)
 		sge_reg_write(e, SGE_REG_INTRSTATUS, status);
 		sge_reg_write(e, SGE_REG_INTRMASK, 0);
 
-		/* Read the Interrupt Cause Read register. */
+		/* What happened?. */
 		if ((status & SGE_INTRS) == 0)
 		{
 			/* Nothing */
 			return;
 		}
 		sge_reg_write(e, SGE_REG_INTRSTATUS, status);
+		/* Card ready to transmit new packets */
 		if (status & (SGE_INTR_TX_DONE | SGE_INTR_TX_IDLE))
 			netdriver_send();
+		/* Card received new packets */
 		if (status & (SGE_INTR_RX_DONE | SGE_INTR_RX_IDLE))
 			netdriver_recv();
+		/* Media status changed */
 		if (status & SGE_INTR_LINK)
 			netdriver_link();
 	}
@@ -1043,13 +1068,14 @@ static void sge_intr(unsigned int mask)
 /*===========================================================================*
  *                               sge_tick                                    *
  *===========================================================================*/
-static void sge_tick(void)
+static void
+sge_tick(void)
 {
 	/* Do periodically processing */
 	sge_t *e;
-	
+
 	e = &sge_state;
-	
+
 	/* Update statistics */
 	netdriver_stat_ierror(0);
 	netdriver_stat_coll(0);
@@ -1058,7 +1084,8 @@ static void sge_tick(void)
 /*===========================================================================*
  *                              sge_reg_read                                 *
  *===========================================================================*/
-static uint32_t sge_reg_read(sge_t *e, uint32_t reg)
+static uint32_t
+sge_reg_read(sge_t *e, uint32_t reg)
 {
 	uint32_t value;
 
@@ -1072,7 +1099,8 @@ static uint32_t sge_reg_read(sge_t *e, uint32_t reg)
 /*===========================================================================*
  *                              sge_reg_write                                *
  *===========================================================================*/
-static void sge_reg_write(sge_t *e, uint32_t reg, uint32_t value)
+static void
+sge_reg_write(sge_t *e, uint32_t reg, uint32_t value)
 {
 	/* Write to memory mapped register. */
 	*(volatile u32_t *)(e->regs + reg) = value;
@@ -1081,7 +1109,8 @@ static void sge_reg_write(sge_t *e, uint32_t reg, uint32_t value)
 /*===========================================================================*
  *                              sge_mii_read                                 *
  *===========================================================================*/
-static uint16_t sge_mii_read(sge_t *e, uint32_t phy, uint32_t reg)
+static uint16_t
+sge_mii_read(sge_t *e, uint32_t phy, uint32_t reg)
 {
 	u32_t read_cmd;
 	u32_t data;
@@ -1105,7 +1134,8 @@ static uint16_t sge_mii_read(sge_t *e, uint32_t phy, uint32_t reg)
 /*===========================================================================*
  *                             sge_mii_write                                 *
  *===========================================================================*/
-static void sge_mii_write(sge_t *e, uint32_t phy, uint32_t reg, uint32_t data)
+static void
+sge_mii_write(sge_t *e, uint32_t phy, uint32_t reg, uint32_t data)
 {
 	u32_t write_cmd;
 
@@ -1127,7 +1157,8 @@ static void sge_mii_write(sge_t *e, uint32_t phy, uint32_t reg, uint32_t data)
 /*===========================================================================*
  *                              read_eeprom                                  *
  *===========================================================================*/
-static uint16_t read_eeprom(sge_t *e, int reg)
+static uint16_t
+read_eeprom(sge_t *e, int reg)
 {
 	u32_t data;
 	u32_t read_cmd;

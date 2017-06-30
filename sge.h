@@ -22,19 +22,6 @@
 #define SGE_DEV_0190	0x0190 /* SiS 190 PCI Fast Ethernet Adapter */
 #define SGE_DEV_0191	0x0191 /* SiS 191 PCI Gigabit Ethernet Adapter */
 
-/* Ethernet driver statuses */
-#define SGE_DETECTED		(1 << 0)
-#define SGE_ENABLED		(1 << 1)
-#define SGE_READING		(1 << 2)
-#define SGE_WRITING		(1 << 3)
-#define SGE_RECEIVED		(1 << 4)
-#define SGE_TRANSMIT		(1 << 5)
-
-/* Ethernet driver modes */
-#define SGE_PROMISC		(1 << 0)
-#define SGE_MULTICAST		(1 << 1)
-#define SGE_BROADCAST		(1 << 2)
-
 /* Speed/Duplex */
 #define SGE_SPEED_10		10
 #define SGE_SPEED_100		100
@@ -43,46 +30,47 @@
 #define SGE_DUPLEX_OFF		0
 
 /* Buffer info */
-#define SGE_IOVEC_NR		16
 #define SGE_BUF_SIZE		2048
 #define SGE_RXDESC_NR		32
 #define SGE_TXDESC_NR		32
-#define SGE_RX_TOTALSIZE		SGE_RXDESC_NR*sizeof(sge_desc_t)
-#define SGE_TX_TOTALSIZE		SGE_TXDESC_NR*sizeof(sge_desc_t)
+#define SGE_RXB_TOTALSIZE		SGE_RXDESC_NR*SGE_BUF_SIZE
+#define SGE_TXB_TOTALSIZE		SGE_TXDESC_NR*SGE_BUF_SIZE
+#define SGE_RXD_TOTALSIZE		SGE_RXDESC_NR*sizeof(sge_desc_t)
+#define SGE_TXD_TOTALSIZE		SGE_TXDESC_NR*sizeof(sge_desc_t)
 #define SGE_DESC_FINAL		0x80000000
 
 /* Register Addresses */
-#define	SGE_REG_TX_CTL			0x00 /* Tx Host Control/status Register */
+#define	SGE_REG_TX_CTL			0x00 /* Tx Host Control/Status Register */
 #define	SGE_REG_TX_DESC			0x04 /* Tx Home Descriptor Base Register */
 #define	SGE_REG_RESERVED0		0x08 /* Reserved */
-#define	SGE_REG_TX_NEXT			0x0c /* Tx Next Descriptor Control/Status Register */
+#define	SGE_REG_TX_NEXT			0x0c /* Tx Next Descriptor Ctrl/Status Reg */
 
 #define	SGE_REG_RX_CTL			0x10 /* Rx Host Control/status Register */
 #define	SGE_REG_RX_DESC			0x14 /* Rx Home Descriptor Base Register */
 #define	SGE_REG_RESERVED1		0x18 /* Reserved */
-#define	SGE_REG_RX_NEXT			0x1c /* Rx Next Descriptor Control/Status Register */
+#define	SGE_REG_RX_NEXT			0x1c /* Rx Next Descriptor Ctrl/Status Reg */
 
 #define	SGE_REG_INTRSTATUS		0x20 /* Interrupt Source Register */
 #define	SGE_REG_INTRMASK		0x24 /* Interrupt Mask Register */
 #define	SGE_REG_INTRCONTROL		0x28 /* Interrupt Control Register */
 #define	SGE_REG_INTRTIMER		0x2c /* Interupt Timer Register */
 
-#define	SGE_REG_PMCONTROL		0x30 /* Power Management Control/Status Register */
+#define	SGE_REG_PMCONTROL		0x30 /* Power Management Control/Status Reg */
 #define	SGE_REG_RESERVED2		0x34 /* Reserved */
 #define	SGE_REG_EEPROMCONTROL		0x38 /* EEPROM Control/Status Register */
 #define	SGE_REG_EEPROMINTERFACE		0x3c /* EEPROM Interface Register */
 #define	SGE_REG_STATIONCONTROL		0x40 /* Station Control/Status Register */
-#define	SGE_REG_GMIICONTROL		0x44 /* Station Management Interface Register */
+#define	SGE_REG_GMIICONTROL		0x44 /* Station Management Interface Reg */
 #define	SGE_REG_GMACIOCR		0x48 /* GMAC IO Compensation Register */
 #define	SGE_REG_GMACIOCTL		0x4c /* GMAC IO Control Register */
 #define	SGE_REG_TXMACCONTROL		0x50 /* Tx MAC Control Register */
 #define	SGE_REG_TXMACTIMELIMIT		0x54 /* Tx MAC Timer/TryLimit Register */
-#define	SGE_REG_RGMIIDELAY		0x58 /* RGMII Tx Internal Delay Control Register */
+#define	SGE_REG_RGMIIDELAY		0x58 /* RGMII Tx Internal Delay Ctrl Reg */
 #define	SGE_REG_RESERVED3		0x5c /* Reserved */
 #define	SGE_REG_RXMACCONTROL		0x60 /* Rx MAC Control Register */
 #define	SGE_REG_RXMACADDR		0x62 /* Rx MAC Unicast Address Register */
-#define	SGE_REG_RXHASHTABLE		0x68 /* Rx MAC Multicast Hash Table Register 1 */
-#define	SGE_REG_RXHASHTABLE2		0x6c /* Rx MAC Multicast Hash Table Register 2 */
+#define	SGE_REG_RXHASHTABLE		0x68 /* Rx MAC Multicast Hashtable Reg 1 */
+#define	SGE_REG_RXHASHTABLE2		0x6c /* Rx MAC Multicast Hashtable Reg 2 */
 #define	SGE_REG_RXWAKEONLAN		0x70 /* Rx WOL Control Register */
 #define	SGE_REG_RXWAKEONLANDATA		0x74 /* Rx WOL Data Access Register */
 #define	SGE_REG_RXMPSCONTROL		0x78 /* Rx MPS Control Register */
@@ -233,7 +221,6 @@ typedef struct sge
 	int rx_desc_count;
 	char *rx_buffer;
 	phys_bytes rx_buffer_p;
-	int rx_buffer_size;
 	uint32_t cur_rx;
 
 	sge_desc_t *tx_desc;
@@ -241,7 +228,6 @@ typedef struct sge
 	int tx_desc_count;
 	char *tx_buffer;
 	phys_bytes tx_buffer_p;
-	int tx_buffer_size;
 	uint32_t cur_tx;
 
 	int RGMII;
