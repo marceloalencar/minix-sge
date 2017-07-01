@@ -812,16 +812,6 @@ sge_recv(struct netdriver_data *data, size_t max)
 		return SUSPEND;
 	}
 
-	/* Report any error status. */
-	if (!(desc->status & SGE_RXSTATUS_CRCOK) || (desc->status &
-		SGE_RXSTATUS_ERRORS))
-	{
-		netdriver_stat_ierror(1);
-		desc->pkt_size = 0;
-		desc->status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
-		return SUSPEND;
-	}
-
 	/* Get user data size. CRC is removed by hardware. */
 	size = desc->pkt_size & 0xffff;
 
@@ -882,11 +872,6 @@ sge_send(struct netdriver_data *data, size_t size)
 	/* Select current packet descriptor from list */
 	current = e->cur_tx % SGE_TXDESC_NR;
 	desc = &e->tx_desc[current];
-
-	if (desc->status & SGE_TXSTATUS_ERRORS)
-	{
-		netdriver_stat_oerror(1);
-	}
 
 	/* Packet bigger than MTU. OS should already know this */
 	if (size > SGE_BUF_SIZE)
