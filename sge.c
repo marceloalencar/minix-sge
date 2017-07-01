@@ -1,18 +1,17 @@
 /* sge.c
  *
- * SiS 190/191 Fast Ethernet Controller driver
+ * SiS 190/191 Ethernet Controller driver
  * 
  * Parts of this code are based on the FreeBSD implementation
- * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), and
- * e1000 driver from Niek Linnenbank.
+ * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), the
+ * e1000 driver by Niek Linnenbank, and the official SiS 190/191
+ * GNU/Linux driver by K.M. Liu.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
  */
  
 #include <minix/drivers.h>
 #include <minix/netdriver.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <machine/pci.h>
 #include "sge.h"
 
@@ -234,7 +233,6 @@ static int sge_probe(sge_t *e, int skip)
 	u32_t status[2];
 	u32_t base, size;
 	u32_t gfpreg, sector_base_addr;
-	char *dname;
 
 	/*
 	 * Attempt to iterate the PCI bus. Start at the beginning.
@@ -264,18 +262,10 @@ static int sge_probe(sge_t *e, int skip)
 	{
 	case SGE_DEV_0190:
 		/* Inform the user about the new card. */
-		if (!(dname = pci_dev_name(vid, did)))
-		{
-			dname = "SiS 190 PCI Fast Ethernet Adapter";
-		}
 		e->model = SGE_DEV_0190;
 		break;
 	case SGE_DEV_0191:
 		/* Inform the user about the new card. */
-		if (!(dname = pci_dev_name(vid, did)))
-		{
-			dname = "SiS 191 PCI Gigabit Ethernet Adapter";
-		}
 		e->model = SGE_DEV_0191;
 		break;
 	default:
@@ -468,7 +458,7 @@ static void sge_init_buf(e)
 sge_t *e;
 {
 	/* This function initializes the TX/RX rings, used for DMA transfers */
-	int i;
+	int i, rx_align, tx_align;
 	phys_bytes rx_buff_p;
 	phys_bytes tx_buff_p;
 	phys_bytes rx_desc_p;
@@ -479,31 +469,35 @@ sge_t *e;
 
 	if (!e->rx_desc)
 	{
-		/* Allocate RX descriptors. */
-		/* rx_desc is the RX ring space. rx_desc_p is a pointer to it. */
-		if ((e->rx_desc = alloc_contig(SGE_RX_TOTALSIZE + 15, AC_ALIGN4K,
+		/* Allocate RX descriptors.    */
+		/* rx_desc: Virtual address    */
+		/* rx_desc_p: Physical address */
+		if ((e->rx_desc = alloc_contig(SGE_RXD_TOTALSIZE + 15, AC_ALIGN4K,
 			&rx_desc_p)) == NULL)
 		{
 			panic("%s: Failed to allocate RX descriptors.\n", e->name);
 		}
-		memset(e->rx_desc, 0, SGE_RX_TOTALSIZE + 15);
+		memset(e->rx_desc, 0, SGE_RXD_TOTALSIZE + 15);
 
 		/* Allocate RX buffers */
-		e->rx_buffer_size = SGE_RXDESC_NR * SGE_BUF_SIZE;
-
-		if ((e->rx_buffer = alloc_contig(e->rx_buffer_size,
-			AC_ALIGN4K, &rx_buff_p)) == NULL)
+		if ((e->rx_buffer = alloc_contig(SGE_RXB_TOTALSIZE + 15, AC_ALIGN4K,
+			&rx_buff_p)) == NULL)
 		{
 			panic("%s: Failed to allocate RX buffers.\n", e->name);
 		}
+		memset(e->rx_buffer, 0, SGE_RXB_TOTALSIZE + 15);
+
+		/* Align addresses to multiple of 16 bit */
+		rx_align = ((rx_buff_p + 0xf) & ~0xf) - rx_buff_p;
+		rx_buff_p = ((rx_buff_p + 0xf) & ~0xf);
 
 		e->cur_rx = 0;
 
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_RXDESC_NR; i++)
 		{
-			e->rx_desc[i].pkt_size = 0;
 			/* RX descriptors are initially held by hardware */
+			e->rx_desc[i].pkt_size = 0;
 			e->rx_desc[i].status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
 			e->rx_desc[i].buf_ptr = rx_buff_p + (i * SGE_BUF_SIZE);
 			e->rx_desc[i].flags = (SGE_BUF_SIZE & 0xfff8);
@@ -514,29 +508,34 @@ sge_t *e;
 
 	if (!e->tx_desc)
 	{
-		/* Allocate TX descriptors. */
-		/* tx_desc is the TX ring space. tx_desc_p is a pointer to it. */
-		if ((e->tx_desc = alloc_contig(SGE_TX_TOTALSIZE + 15, AC_ALIGN4K,
+		/* Allocate TX descriptors.    */
+		/* tx_desc: Virtual address    */
+		/* tx_desc_p: Physical address */
+		if ((e->tx_desc = alloc_contig(SGE_TXD_TOTALSIZE + 15, AC_ALIGN4K,
 			&tx_desc_p)) == NULL)
 		{
 			panic("%s: Failed to allocate TX descriptors.\n", e->name);
 		}
-		memset(e->tx_desc, 0, SGE_TX_TOTALSIZE + 15);
+		memset(e->tx_desc, 0, SGE_TXD_TOTALSIZE + 15);
 
 		/* Allocate TX buffers */
-		e->tx_buffer_size = SGE_TXDESC_NR * SGE_BUF_SIZE;
-
-		if ((e->tx_buffer = alloc_contig(e->tx_buffer_size,
-			AC_ALIGN4K, &tx_buff_p)) == NULL)
+		if ((e->tx_buffer = alloc_contig(SGE_TXB_TOTALSIZE + 15, AC_ALIGN4K,
+			&tx_buff_p)) == NULL)
 		{
 			panic("%s: Failed to allocate TX buffers.\n", e->name);
 		}
+		memset(e->tx_buffer, 0, SGE_TXB_TOTALSIZE + 15);
+
+		/* Align addresses to multiple of 16 bit */
+		tx_align = ((tx_buff_p + 0xf) & ~0xf) - tx_buff_p;
+		tx_buff_p = ((tx_buff_p + 0xf) & ~0xf);
 
 		e->cur_tx = 0;
 
 		/* Setup receive descriptors. */
 		for (i = 0; i < SGE_TXDESC_NR; i++)
 		{
+			/* TX descriptors will be filled by software */
 			e->tx_desc[i].pkt_size = 0;
 			e->tx_desc[i].status = 0;
 			e->tx_desc[i].buf_ptr = 0;
@@ -546,10 +545,14 @@ sge_t *e;
 		e->tx_desc[SGE_TXDESC_NR - 1].flags = SGE_DESC_FINAL;
 	}
 
+	/* Apply alignment to virtual addresses, and store at status */
+	e->tx_buffer += tx_align;
+	e->rx_buffer += rx_align;
 	e->tx_buffer_p = tx_buff_p;
 	e->rx_buffer_p = rx_buff_p;
 	e->tx_desc_p = tx_desc_p;
 	e->rx_desc_p = rx_desc_p;
+
 	/* Inform card where the buffer is */
 	sge_reg_write(e, SGE_REG_TX_DESC, tx_desc_p);
 	sge_reg_write(e, SGE_REG_RX_DESC, rx_desc_p);
@@ -600,7 +603,7 @@ sge_t *e;
 
 	sge_reg_write(e, SGE_REG_RGMIIDELAY, 0x0);
 	sge_reg_write(e, SGE_REG_RESERVED3, 0x0);
-	sge_reg_write(e, SGE_REG_RXMACCONTROL, 0x00000252);
+	sge_reg_write(e, SGE_REG_RXMACCONTROL, 0x12);
 
 	sge_reg_write(e, SGE_REG_RXHASHTABLE, 0x0);
 	sge_reg_write(e, SGE_REG_RXHASHTABLE2, 0x0);
@@ -625,8 +628,6 @@ int from_int;
 	uint32_t command;
 	uint32_t current;
 	uint32_t status;
-
-	printf("%s: sge_writev_s() from interrupt? %d\n", e->name, from_int ? 1 : 0);
 
 	/* Are we called from the interrupt handler? */
 	if (!from_int)
@@ -665,33 +666,32 @@ int from_int;
 			/* Copy bytes to TX queue buffers. */
 			if ((r = sys_safecopyfrom(e->tx_message.m_source,
 				iovec[i].iov_grant, 0,
-				(vir_bytes) e->tx_buffer +
+				(vir_bytes) e->tx_buffer + bytes +
 				(current * SGE_BUF_SIZE), size)) != OK)
 			{
 				panic("sys_safecopyfrom() failed: %d", r);
 			}
-			/* Mark this descriptor ready. */
-			desc->pkt_size = size & 0xffff;
-			desc->status = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
-				SGE_TXSTATUS_DEFEN | SGE_TXSTATUS_THOL3 | SGE_TXSTATUS_TXINT);
-			desc->buf_ptr = e->tx_buffer_p + (current * SGE_BUF_SIZE);
-			desc->flags |= size & 0xffff;
-			if (e->duplex_mode == 0)
-			{
-				desc->status |= (SGE_TXSTATUS_COLSEN | SGE_TXSTATUS_CRSEN |
-					SGE_TXSTATUS_BKFEN);
-				if (e->link_speed == SGE_SPEED_1000)
-					desc->status |= (SGE_TXSTATUS_EXTEN | SGE_TXSTATUS_BSTEN);
-			}
-			desc->status |= SGE_TXSTATUS_TXOWN;
 
-			/* Move to next descriptor. */
-			current = (current + 1) % SGE_TXDESC_NR;
-			desc = &e->tx_desc[current];
 			bytes += size;
 		}
+
+		/* Mark this descriptor ready. */
+		desc->pkt_size = size & 0xffff;
+		desc->status = (SGE_TXSTATUS_PADEN | SGE_TXSTATUS_CRCEN |
+			SGE_TXSTATUS_DEFEN | SGE_TXSTATUS_THOL3 | SGE_TXSTATUS_TXINT);
+		desc->buf_ptr = e->tx_buffer_p + (current * SGE_BUF_SIZE);
+		desc->flags |= size & 0xffff;
+		if (e->duplex_mode == 0)
+		{
+			desc->status |= (SGE_TXSTATUS_COLSEN | SGE_TXSTATUS_CRSEN |
+				SGE_TXSTATUS_BKFEN);
+			if (e->link_speed == SGE_SPEED_1000)
+				desc->status |= (SGE_TXSTATUS_EXTEN | SGE_TXSTATUS_BSTEN);
+		}
+		desc->status |= SGE_TXSTATUS_TXOWN;
+
 		/* Increment tail. Start transmission. */
-		e->cur_tx = current;
+		e->cur_tx = (current + 1) % SGE_TXDESC_NR;
 		command = sge_reg_read(e, SGE_REG_TX_CTL);
 		sge_reg_write(e, SGE_REG_TX_CTL, 0x10 | command);
 	}
@@ -717,8 +717,6 @@ int from_int;
 	uint32_t current;
 	uint32_t status;
 	uint32_t pkt_size;
-
-	printf("%s: sge_readv_s() from interrupt? %d\n", e->name, from_int ? 1 : 0);
 
 	/* Are we called from the interrupt handler? */
 	if (!from_int)

@@ -1,10 +1,11 @@
 /* sge.h
  *
- * SiS 190/191 Fast Ethernet Controller driver
+ * SiS 190/191 Ethernet Controller driver
  * 
- * Parts of this code are based on the FreeBSD implementation.
- * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), and
- * e1000 driver from Niek Linnenbank.
+ * Parts of this code are based on the FreeBSD implementation
+ * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), the
+ * e1000 driver by Niek Linnenbank, and the official SiS 190/191
+ * GNU/Linux driver by K.M. Liu.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
  */
@@ -44,11 +45,13 @@
 
 /* Buffer info */
 #define SGE_IOVEC_NR		16
-#define SGE_BUF_SIZE		ETH_MAX_PACK_SIZE_TAGGED + ETH_HDR_SIZE + ETH_CRC_SIZE
+#define SGE_BUF_SIZE		2048
 #define SGE_RXDESC_NR		32
 #define SGE_TXDESC_NR		32
-#define SGE_RX_TOTALSIZE		SGE_RXDESC_NR*sizeof(sge_desc_t)
-#define SGE_TX_TOTALSIZE		SGE_TXDESC_NR*sizeof(sge_desc_t)
+#define SGE_RXB_TOTALSIZE		SGE_RXDESC_NR*SGE_BUF_SIZE
+#define SGE_TXB_TOTALSIZE		SGE_TXDESC_NR*SGE_BUF_SIZE
+#define SGE_RXD_TOTALSIZE		SGE_RXDESC_NR*sizeof(sge_desc_t)
+#define SGE_TXD_TOTALSIZE		SGE_TXDESC_NR*sizeof(sge_desc_t)
 #define SGE_DESC_FINAL		0x80000000
 
 /* Register Addresses */
@@ -242,14 +245,12 @@ typedef struct sge
 	int rx_desc_count;
 	char *rx_buffer;
 	phys_bytes rx_buffer_p;
-	int rx_buffer_size;
 
 	sge_desc_t *tx_desc;
 	phys_bytes tx_desc_p;
 	int tx_desc_count;
 	char *tx_buffer;
 	phys_bytes tx_buffer_p;
-	int tx_buffer_size;
 
 	int client;
 	message rx_message;
