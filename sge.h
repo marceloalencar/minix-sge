@@ -1,10 +1,11 @@
 /* sge.h
  *
- * SiS 190/191 Fast Ethernet Controller driver
+ * SiS 190/191 Ethernet Controller driver
  * 
- * Parts of this code are based on the FreeBSD implementation.
- * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), and
- * e1000 driver from Niek Linnenbank.
+ * Parts of this code are based on the FreeBSD implementation
+ * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), the
+ * e1000 driver by Niek Linnenbank, and the official SiS 190/191
+ * GNU/Linux driver by K.M. Liu.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
  */
@@ -109,17 +110,29 @@
 #define SGE_TXSTATUS_COLSEN		0x00040000
 #define SGE_TXSTATUS_CRCEN		0x00020000
 #define SGE_TXSTATUS_PADEN		0x00010000
+#define SGE_TXSTATUS_WND		0x00080000
+#define SGE_TXSTATUS_TABRT		0x00040000
+#define SGE_TXSTATUS_FIFO		0x00020000
+#define SGE_TXSTATUS_LINK		0x00010000
+#define SGE_TXSTATUS_ERRORS					\
+	(SGE_TXSTATUS_WND | SGE_TXSTATUS_TABRT | SGE_TXSTATUS_FIFO | \
+	 SGE_TXSTATUS_LINK)
 
 #define SGE_RXSTATUS_RXOWN		0x80000000
 #define SGE_RXSTATUS_TAGON		0x80000000
 #define SGE_RXSTATUS_RXINT		0x40000000
-#define SGE_RXSTATUS_CRCOK		0x00010000
-#define SGE_RXSTATUS_COLON		0x00020000
-#define SGE_RXSTATUS_NIBON		0x00040000
-#define SGE_RXSTATUS_MIIER		0x00080000
-#define SGE_RXSTATUS_LIMIT		0x00200000
-#define SGE_RXSTATUS_SHORT		0x00400000
 #define SGE_RXSTATUS_ABORT		0x00800000
+#define SGE_RXSTATUS_SHORT		0x00400000
+#define SGE_RXSTATUS_LIMIT		0x00200000
+#define SGE_RXSTATUS_MIIER		0x00100000
+#define SGE_RXSTATUS_OVRUN		0x00080000
+#define SGE_RXSTATUS_NIBON		0x00040000
+#define SGE_RXSTATUS_COLON		0x00020000
+#define SGE_RXSTATUS_CRCOK		0x00010000
+#define SGE_RXSTATUS_ERRORS					\
+	(SGE_RXSTATUS_ABORT | SGE_RXSTATUS_SHORT |	\
+	 SGE_RXSTATUS_LIMIT | SGE_RXSTATUS_MIIER | SGE_RXSTATUS_OVRUN |	\
+	 SGE_RXSTATUS_NIBON | SGE_RXSTATUS_COLON)
 
 /* Interrupts */
 #define	SGE_INTR_SOFT		0x40000000

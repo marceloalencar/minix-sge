@@ -1,10 +1,11 @@
 /* sge.c
  *
- * SiS 190/191 Fast Ethernet Controller driver
+ * SiS 190/191 Ethernet Controller driver
  * 
  * Parts of this code are based on the FreeBSD implementation
- * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), and
- * e1000 driver from Niek Linnenbank.
+ * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), the
+ * e1000 driver by Niek Linnenbank, and the official SiS 190/191
+ * GNU/Linux driver by K.M. Liu.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
  */
@@ -52,16 +53,12 @@ static const struct netdriver sge_table = {
 	.ndr_init	= sge_init,
 	.ndr_stop	= sge_stop,
 	.ndr_set_mode	= sge_set_mode,
-//	.ndr_set_caps	= sge_set_caps,
-//	.ndr_set_flags	= sge_set_flags,
-//	.ndr_set_media	= sge_set_media,
 	.ndr_set_hwaddr	= sge_set_hwaddr,
 	.ndr_recv	= sge_recv,
 	.ndr_send	= sge_send,
 	.ndr_get_link	= sge_get_link,
 	.ndr_intr	= sge_intr,
 	.ndr_tick	= sge_tick
-//,	.ndr_other	= sge_other
 };
 
 /*===========================================================================*
@@ -815,6 +812,16 @@ sge_recv(struct netdriver_data *data, size_t max)
 		return SUSPEND;
 	}
 
+	/* Report any error status. */
+	if (!(desc->status & SGE_RXSTATUS_CRCOK) || (desc->status &
+		SGE_RXSTATUS_ERRORS))
+	{
+		netdriver_stat_ierror(1);
+		desc->pkt_size = 0;
+		desc->status = SGE_RXSTATUS_RXOWN | SGE_RXSTATUS_RXINT;
+		return SUSPEND;
+	}
+
 	/* Get user data size. CRC is removed by hardware. */
 	size = desc->pkt_size & 0xffff;
 
@@ -875,6 +882,11 @@ sge_send(struct netdriver_data *data, size_t size)
 	/* Select current packet descriptor from list */
 	current = e->cur_tx % SGE_TXDESC_NR;
 	desc = &e->tx_desc[current];
+
+	if (desc->status & SGE_TXSTATUS_ERRORS)
+	{
+		netdriver_stat_oerror(1);
+	}
 
 	/* Packet bigger than MTU. OS should already know this */
 	if (size > SGE_BUF_SIZE)
@@ -1078,7 +1090,7 @@ sge_tick(void)
 
 	/* Update statistics */
 	netdriver_stat_ierror(0);
-	netdriver_stat_coll(0);
+	netdriver_stat_oerror(0);
 }
 
 /*===========================================================================*
