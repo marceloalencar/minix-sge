@@ -1,4 +1,4 @@
-# Makefile for the SiS 190/191 Fast Ethernet Controller driver.
+# Makefile for the SiS 190/191 Ethernet Controller driver.
 PROG=	sge
 SRCS=	sge.c
 

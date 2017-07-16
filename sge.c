@@ -1,15 +1,15 @@
-/* sge.c
+/* sge.h
  *
  * SiS 190/191 Ethernet Controller driver
  * 
  * Parts of this code are based on the FreeBSD implementation
  * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), the
- * e1000 driver by Niek Linnenbank, and the official SiS 190/191
- * GNU/Linux driver by K.M. Liu.
+ * e1000 driver by Niek Linnenbank, and the official
+ * SiS 190/191 GNU/Linux driver by K.M. Liu.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
- */
- 
+*/
+
 #include <minix/drivers.h>
 #include <minix/netdriver.h>
 #include <machine/pci.h>
@@ -394,7 +394,6 @@ sge_t *e;
 	return TRUE;
 }
 
-
 /*===========================================================================*
  *                             sge_init_addr                                 *
  *===========================================================================*/
@@ -463,9 +462,6 @@ sge_t *e;
 	phys_bytes tx_buff_p;
 	phys_bytes rx_desc_p;
 	phys_bytes tx_desc_p;
-
-	e->rx_desc_count = SGE_RXDESC_NR;
-	e->tx_desc_count = SGE_TXDESC_NR;
 
 	if (!e->rx_desc)
 	{

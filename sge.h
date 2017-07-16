@@ -4,8 +4,8 @@
  * 
  * Parts of this code are based on the FreeBSD implementation
  * (https://svnweb.freebsd.org/base/head/sys/dev/sge/), the
- * e1000 driver by Niek Linnenbank, and the official SiS 190/191
- * GNU/Linux driver by K.M. Liu.
+ * e1000 driver by Niek Linnenbank, and the official
+ * SiS 190/191 GNU/Linux driver by K.M. Liu.
  *
  * Created: May 2017 by Marcelo Alencar <marceloalves@ufpa.br>
  */
@@ -20,8 +20,8 @@
 #define SGE_ENVVAR		"SGEETH"
 
 /* Device IDs */
-#define SGE_DEV_0190	0x0190 /* SiS 190 PCI Fast Ethernet Adapter */
-#define SGE_DEV_0191	0x0191 /* SiS 191 PCI Gigabit Ethernet Adapter */
+#define SGE_DEV_0190	0x0190 /* SiS190 */
+#define SGE_DEV_0191	0x0191 /* SiS191 */
 
 /* Ethernet driver statuses */
 #define SGE_DETECTED		(1 << 0)
@@ -92,30 +92,22 @@
 #define	SGE_REG_RESERVED4		0x7c /* Reserved */
 
 /* Registers Interface */
-#define SGE_REGSC_FULL		0x0f000000
-#define	SGE_REGSC_LOOPBACK		0x80000000
-#define	SGE_REGSC_RGMII		0x00008000
 #define	SGE_REGSC_FDX			0x00001000
 #define	SGE_REGSC_SPEED_MASK		0x00000c00
 #define	SGE_REGSC_SPEED_10		0x00000400
 #define	SGE_REGSC_SPEED_100		0x00000800
 #define	SGE_REGSC_SPEED_1000		0x00000c00
 
+/* RX mode */
 #define SGE_RXCTRL_BCAST		0x0800
 #define	SGE_RXCTRL_MCAST		0x0400
 #define	SGE_RXCTRL_MYPHYS		0x0200
 #define	SGE_RXCTRL_ALLPHYS		0x0100
 
+/* TX descriptor command/status */
 #define SGE_TXSTATUS_TXOWN		0x80000000
 #define SGE_TXSTATUS_TXINT		0x40000000
 #define SGE_TXSTATUS_THOL3		0x30000000
-#define SGE_TXSTATUS_THOL2		0x20000000
-#define SGE_TXSTATUS_THOL1		0x10000000
-#define SGE_TXSTATUS_THOL0		0x00000000
-#define SGE_TXSTATUS_LSEN		0x08000000
-#define SGE_TXSTATUS_IPCS		0x04000000
-#define SGE_TXSTATUS_TCPCS		0x02000000
-#define SGE_TXSTATUS_UDPCS		0x01000000
 #define SGE_TXSTATUS_BSTEN		0x00800000
 #define SGE_TXSTATUS_EXTEN		0x00400000
 #define SGE_TXSTATUS_DEFEN		0x00200000
@@ -125,23 +117,21 @@
 #define SGE_TXSTATUS_CRCEN		0x00020000
 #define SGE_TXSTATUS_PADEN		0x00010000
 
-#define SGE_RXSTATUS_RXOWN		0x80000000
-#define SGE_RXSTATUS_TAGON		0x80000000
-#define SGE_RXSTATUS_RXINT		0x40000000
+/* RX descriptor status */
 #define SGE_RXSTATUS_CRCOK		0x00010000
 #define SGE_RXSTATUS_COLON		0x00020000
 #define SGE_RXSTATUS_NIBON		0x00040000
-#define SGE_RXSTATUS_MIIER		0x00080000
+#define SGE_RXSTATUS_OVRUN		0x00080000
+#define SGE_RXSTATUS_MIIER		0x00100000
 #define SGE_RXSTATUS_LIMIT		0x00200000
 #define SGE_RXSTATUS_SHORT		0x00400000
 #define SGE_RXSTATUS_ABORT		0x00800000
+#define SGE_RXSTATUS_RXINT		0x40000000
+#define SGE_RXSTATUS_RXOWN		0x80000000
 
 /* Interrupts */
 #define	SGE_INTR_SOFT		0x40000000
 #define	SGE_INTR_TIMER		0x20000000
-#define	SGE_INTR_PAUSE_FRAME	0x00080000
-#define	SGE_INTR_MAGIC_FRAME	0x00040000
-#define	SGE_INTR_WAKE_FRAME		0x00020000
 #define	SGE_INTR_LINK		0x00010000
 #define	SGE_INTR_RX_IDLE		0x00000080
 #define	SGE_INTR_RX_DONE		0x00000040
@@ -151,28 +141,23 @@
 #define	SGE_INTR_TX_DONE		0x00000004
 #define	SGE_INTR_RX_HALT		0x00000002
 #define	SGE_INTR_TX_HALT		0x00000001
-#define	SGE_INTRS							\
-	(SGE_INTR_RX_IDLE | SGE_INTR_RX_DONE | SGE_INTR_TXQ1_IDLE |			\
-	 SGE_INTR_TXQ1_DONE |SGE_INTR_TX_IDLE | SGE_INTR_TX_DONE |			\
+#define	SGE_INTRS \
+	(SGE_INTR_RX_IDLE | SGE_INTR_RX_DONE | SGE_INTR_TXQ1_IDLE | \
+	 SGE_INTR_TXQ1_DONE |SGE_INTR_TX_IDLE | SGE_INTR_TX_DONE | \
 	 SGE_INTR_TX_HALT | SGE_INTR_RX_HALT)
 
 /* EEPROM Addresses */
-#define	SGE_EEPADDR_SIG		0x00 /* EEPROM Signature */
-#define	SGE_EEPADDR_CLK		0x01 /* EEPROM Clock */
-#define	SGE_EEPADDR_INFO		0x02 /* EEPROM Info */
-#define	SGE_EEPADDR_MAC		0x03 /* EEPROM MAC Address */
+#define	SGE_EEPADDR_SIG		0x00 /* Signature */
+#define	SGE_EEPADDR_CLK		0x01 /* Clock */
+#define	SGE_EEPADDR_INFO		0x02 /* Info */
+#define	SGE_EEPADDR_MAC		0x03 /* MAC Address */
 
 /* EEPROM Interface */
 #define SGE_EEPROM_DATA		0xffff0000
 #define SGE_EEPROM_DATA_SHIFT		16
 #define SGE_EEPROM_OFFSET_SHIFT		10
 #define SGE_EEPROM_READ		0x00000200
-#define SGE_EEPROM_WRITE		0x00000100
 #define SGE_EEPROM_REQ		0x00000080
-#define SGE_EEPROM_DO		0x00000008
-#define SGE_EEPROM_DI		0x00000004
-#define SGE_EEPROM_CLK		0x00000002
-#define SGE_EEPROM_CS		0x00000001
 
 /* MII Addresses */
 #define SGE_MIIADDR_CONTROL		0x00
@@ -242,13 +227,11 @@ typedef struct sge
 
 	sge_desc_t *rx_desc;
 	phys_bytes rx_desc_p;
-	int rx_desc_count;
 	char *rx_buffer;
 	phys_bytes rx_buffer_p;
 
 	sge_desc_t *tx_desc;
 	phys_bytes tx_desc_p;
-	int tx_desc_count;
 	char *tx_buffer;
 	phys_bytes tx_buffer_p;
 
